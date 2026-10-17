@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Swords, Users, GraduationCap, ArrowLeft } from 'lucide-react';
 import { TopLogo } from '../components/TopLogo';
 import { SideCharacters } from '../components/SideCharacters';
 import { soundManager } from '../audio/soundManager';
 import { BotDifficulty, GameScreen } from '../types/game';
+import { framePreloader } from '../game/framePreloader';
 
 interface ModeSelectScreenProps {
   onSelectDifficulty: (difficulty: BotDifficulty) => void;
@@ -14,6 +15,10 @@ export const ModeSelectScreen: React.FC<ModeSelectScreenProps> = ({
   onSelectDifficulty,
   onNavigate
 }) => {
+  useEffect(() => {
+    framePreloader.preloadAll();
+  }, []);
+
   const handleHover = () => {
     soundManager.playHover();
   };

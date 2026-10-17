@@ -7,6 +7,14 @@ export default defineConfig({
   server: {
     port: 3000,
     open: false,
-    host: true
+    host: true,
+    watch: {
+      ignored: [
+        '**/Male_Fighter_PNG_Frames/**',
+        '**/Female_Fighter_PNG_Frames_Lite/**',
+        '**/*_Frames*/**',
+        '**/.git/**'
+      ]
+    }
   }
 });

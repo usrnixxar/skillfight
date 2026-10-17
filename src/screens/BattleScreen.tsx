@@ -6,6 +6,13 @@ import { SideCharacters, CharacterActionState } from '../components/SideCharacte
 import { BattleFxCanvas } from '../components/BattleFxCanvas';
 import { soundManager } from '../audio/soundManager';
 import { getRandomWord } from '../game/wordBank';
+import { framePreloader } from '../game/framePreloader';
+import {
+  MALE_ATTACK_CONFIG,
+  MALE_ATTACK_EVENTS,
+  PROJECTILE_CONFIG,
+  FrameEvent
+} from '../game/maleFighterConfig';
 import {
   BotDifficulty,
   DIFFICULTY_CONFIGS,
@@ -69,11 +76,16 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const [leftPose, setLeftPose] = useState<CharacterActionState>('ready');
   const [rightPose, setRightPose] = useState<CharacterActionState>('ready');
 
+  // Male 240-frame animation state
+  const [isMaleAttacking, setIsMaleAttacking] = useState(false);
+  const [energyGlow, setEnergyGlow] = useState(false);
+
   // Timers and locks
   const botTimeoutRef = useRef<number | null>(null);
   const countdownIntervalRef = useRef<number | null>(null);
   const roundLockRef = useRef(true); // locked during countdown / transitions
   const transitionTimeoutsRef = useRef<number[]>([]);
+  const hasAwardedKillRef = useRef(false);
 
   // Clear all pending timeouts and intervals safely
   const clearAllTimers = useCallback(() => {
@@ -102,10 +114,13 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     const nextWord = getRandomWord(difficulty, current.currentWord);
     const nextWpm = pickBotWpm();
 
+    setIsMaleAttacking(false);
+    setEnergyGlow(false);
     setLeftPose('idle');
     setRightPose('idle');
     setInputError(false);
     roundLockRef.current = false;
+    hasAwardedKillRef.current = false;
 
     setState(prev => ({
       ...prev,
@@ -131,100 +146,214 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [difficulty, pickBotWpm]);
 
-  // Handle Win of a single word round
-  const handleRoundWin = useCallback((winner: 'player' | 'bot') => {
-    if (roundLockRef.current) return;
-    roundLockRef.current = true;
+  // Handle projectile arrival at opponent
+  const onProjectileImpact = useCallback(() => {
+    if (hasAwardedKillRef.current) return;
+    hasAwardedKillRef.current = true;
 
-    clearAllTimers();
-
-    const isPlayer = winner === 'player';
-    const bulletDir = isPlayer ? 'player-to-bot' : 'bot-to-player';
     const current = stateRef.current;
+    const isPlayer = current.roundWinner === 'player';
 
-    const nextPlayerKills = isPlayer ? current.playerKills + 1 : current.playerKills;
-    const nextBotKills = !isPlayer ? current.botKills + 1 : current.botKills;
-    const matchWon = nextPlayerKills >= 3 ? 'player' : nextBotKills >= 3 ? 'bot' : null;
+    // Stop projectile and play impact sound + particle burst
+    soundManager.playImpact(isPlayer);
 
-    // STEP 1 (0ms): Attacker raises weapon/casts magic & fires projectile
-    soundManager.playShoot(isPlayer);
     if (isPlayer) {
-      setLeftPose('attack');
-      setRightPose('idle');
-    } else {
-      setRightPose('attack');
-      setLeftPose('idle');
-    }
-
-    setState(prev => ({
-      ...prev,
-      phase: 'attack',
-      roundWinner: winner,
-      matchWinner: matchWon,
-      bulletActive: true,
-      bulletDirection: bulletDir
-    }));
-
-    // STEP 2 (380ms): Projectile travels across screen and hits target
-    scheduleTimeout(() => {
-      soundManager.playImpact(isPlayer);
-      if (isPlayer) {
-        setRightPose('hit');
-      } else {
-        setLeftPose('hit');
-      }
+      // Female opponent reacts with hit animation
+      setRightPose('hit');
+      const nextKills = current.playerKills + 1;
+      const matchWon = nextKills >= 3 ? 'player' : null;
 
       setState(prev => ({
         ...prev,
         phase: 'hit',
-        playerKills: nextPlayerKills,
-        botKills: nextBotKills,
-        shakeActive: !reducedMotion
-      }));
-    }, 380);
-
-    // STEP 3 (720ms): Impact recoil finishes, stop shake & projectile
-    scheduleTimeout(() => {
-      setState(prev => ({
-        ...prev,
-        shakeActive: false,
+        playerKills: nextKills,
+        matchWinner: matchWon,
+        shakeActive: !reducedMotion,
         bulletActive: false
       }));
 
-      // Check if match ended (3 kills reached)
-      if (matchWon) {
-        setState(prev => ({ ...prev, phase: 'finished' }));
-        if (matchWon === 'player') {
-          setLeftPose('victory');
-          setRightPose('defeat');
-          soundManager.playVictory();
+      // Camera shake for 300ms
+      scheduleTimeout(() => {
+        setState(prev => ({ ...prev, shakeActive: false }));
+      }, PROJECTILE_CONFIG.screenShake.durationMs);
 
-          confetti({
-            particleCount: 120,
-            spread: 90,
-            origin: { y: 0.6 }
-          });
-        } else {
+    } else {
+      // Male player reacts with hit animation
+      setLeftPose('hit');
+      const nextKills = current.botKills + 1;
+      const matchWon = nextKills >= 3 ? 'bot' : null;
+
+      setState(prev => ({
+        ...prev,
+        phase: 'hit',
+        botKills: nextKills,
+        matchWinner: matchWon,
+        shakeActive: !reducedMotion,
+        bulletActive: false
+      }));
+
+      // Camera shake for 300ms
+      scheduleTimeout(() => {
+        setState(prev => ({ ...prev, shakeActive: false }));
+      }, PROJECTILE_CONFIG.screenShake.durationMs);
+    }
+  }, [reducedMotion, scheduleTimeout]);
+
+  // Frame event dispatcher from MaleFighterFramePlayer
+  const handleMaleFrameEvent = useCallback((event: FrameEvent) => {
+    switch (event.event) {
+      case 'ATTACK_START':
+        roundLockRef.current = true;
+        break;
+
+      case 'WEAPON_RAISE':
+        soundManager.playWeaponRaiseSound();
+        break;
+
+      case 'AIM_START':
+        // Character is aiming
+        break;
+
+      case 'ENERGY_CHARGE_START':
+        soundManager.playChargingSound();
+        break;
+
+      case 'CHARGE_PEAK':
+        setEnergyGlow(true);
+        break;
+
+      case 'TRIGGER_PRESS':
+        soundManager.playTriggerSound();
+        break;
+
+      case 'PROJECTILE_RELEASE':
+        // Launch blue projectile traveling left to right
+        setState(prev => ({
+          ...prev,
+          bulletActive: true,
+          bulletDirection: 'player-to-bot'
+        }));
+
+        // Projectile reaches opponent after projectileDurationMs (350ms)
+        scheduleTimeout(() => {
+          onProjectileImpact();
+        }, PROJECTILE_CONFIG.projectileDurationMs);
+        break;
+
+      case 'FIRING_SOUND':
+        soundManager.playGunFireSound();
+        break;
+
+      case 'MUZZLE_FLASH_END':
+        setEnergyGlow(false);
+        break;
+
+      case 'RECOVERY_START':
+        // Opponent recovers from hit
+        setRightPose('recover');
+        soundManager.playRoundWin();
+        break;
+
+      case 'ATTACK_COMPLETE':
+        // Animation finished at frame 240
+        handleMaleAttackComplete();
+        break;
+
+      default:
+        break;
+    }
+  }, [onProjectileImpact, scheduleTimeout]);
+
+  // Triggered when male fighter reaches frame 240
+  const handleMaleAttackComplete = useCallback(() => {
+    setIsMaleAttacking(false);
+    setEnergyGlow(false);
+    setLeftPose('idle');
+    setRightPose('idle');
+
+    const current = stateRef.current;
+    if (current.playerKills >= 3) {
+      // Victory for player!
+      setState(prev => ({ ...prev, phase: 'finished', matchWinner: 'player' }));
+      setLeftPose('victory');
+      setRightPose('defeat');
+      soundManager.playVictory();
+
+      confetti({
+        particleCount: 130,
+        spread: 90,
+        origin: { y: 0.6 }
+      });
+    } else {
+      // Advance to next round smoothly
+      advanceToNextRound();
+    }
+  }, [advanceToNextRound]);
+
+  // Handle Win of a single word round
+  const handleRoundWin = useCallback((winner: 'player' | 'bot') => {
+    if (roundLockRef.current) return;
+    roundLockRef.current = true;
+    hasAwardedKillRef.current = false;
+
+    clearAllTimers();
+
+    const isPlayer = winner === 'player';
+
+    if (isPlayer) {
+      // MALE FRAME-DRIVEN ATTACK SEQUENCE
+      // Gameplay state sequence:
+      // WORD_COMPLETED ↓ LOCK_ROUND ↓ MALE_ATTACK_START ↓ WEAPON_RAISE ↓ AIM ↓ TRIGGER / ENERGY_CHARGE ↓ PROJECTILE_RELEASE ↓ PROJECTILE_TRAVEL ↓ IMPACT + FEMALE_HIT + SCREEN_SHAKE ↓ RECOVERY ↓ ATTACK_COMPLETE ↓ NEXT_ROUND or VICTORY
+      setLeftPose('attack');
+      setRightPose('idle');
+      setIsMaleAttacking(true);
+
+      setState(prev => ({
+        ...prev,
+        phase: 'attack',
+        roundWinner: 'player',
+        bulletActive: false
+      }));
+
+    } else {
+      // BOT (FEMALE FIGHTER) ATTACK SEQUENCE
+      soundManager.playShoot(false);
+      setRightPose('attack');
+      setLeftPose('idle');
+
+      setState(prev => ({
+        ...prev,
+        phase: 'attack',
+        roundWinner: 'bot',
+        bulletActive: true,
+        bulletDirection: 'bot-to-player'
+      }));
+
+      // Pink projectile reaches male fighter after 350ms
+      scheduleTimeout(() => {
+        onProjectileImpact();
+      }, 350);
+
+      // Recovery at 750ms
+      scheduleTimeout(() => {
+        setLeftPose('recover');
+        setRightPose('idle');
+      }, 750);
+
+      // Complete round or match at 1350ms
+      scheduleTimeout(() => {
+        const cur = stateRef.current;
+        if (cur.botKills >= 3) {
+          setState(prev => ({ ...prev, phase: 'finished', matchWinner: 'bot' }));
           setRightPose('victory');
           setLeftPose('defeat');
           soundManager.playDefeat();
-        }
-      } else {
-        // Round won, match continues!
-        if (isPlayer) {
-          setRightPose('recover');
         } else {
-          setLeftPose('recover');
-        }
-        soundManager.playRoundWin();
-
-        // STEP 4 (1200ms): Smoothly start next round
-        scheduleTimeout(() => {
           advanceToNextRound();
-        }, 500);
-      }
-    }, 720);
-  }, [clearAllTimers, scheduleTimeout, reducedMotion, advanceToNextRound]);
+        }
+      }, 1350);
+    }
+  }, [clearAllTimers, onProjectileImpact, scheduleTimeout, advanceToNextRound]);
 
   // Launch Bot Typing Simulation
   const startBotTyping = useCallback((targetWord: string, wpm: number) => {
@@ -328,11 +457,13 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     }, 1000);
   }, [clearAllTimers, startBotTyping]);
 
-  // Initialize first round on mount
+  // Preload all 240 frames and initialize first round on mount
   useEffect(() => {
+    framePreloader.preloadAll();
     runFirstRoundCountdown();
     return () => {
       clearAllTimers();
+      setIsMaleAttacking(false);
     };
   }, [clearAllTimers, runFirstRoundCountdown]);
 
@@ -392,6 +523,9 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     soundManager.playClick();
     clearAllTimers();
     roundLockRef.current = true;
+    setIsMaleAttacking(false);
+    setEnergyGlow(false);
+    hasAwardedKillRef.current = false;
     const firstWord = getRandomWord(difficulty);
     const firstWpm = pickBotWpm();
 
@@ -428,6 +562,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const handleExitMatch = () => {
     soundManager.playClick();
     clearAllTimers();
+    setIsMaleAttacking(false);
     onNavigate('modes');
   };
 
@@ -515,11 +650,15 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         <div className="word-card-target">{state.currentWord}</div>
       </div>
 
-      {/* PERSISTENT COMBAT SIDE CHARACTERS */}
+      {/* PERSISTENT COMBAT SIDE CHARACTERS (Left uses MaleFighterFramePlayer 240 frames) */}
       <SideCharacters
         isBattle={true}
         leftState={leftPose}
         rightState={rightPose}
+        isMaleFrameAttack={isMaleAttacking}
+        onMaleFrameEvent={handleMaleFrameEvent}
+        onMaleAttackComplete={handleMaleAttackComplete}
+        energyGlow={energyGlow}
       />
 
       {/* 60 FPS PROJECTILE & PARTICLE FX CANVAS */}

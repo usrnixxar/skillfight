@@ -254,6 +254,117 @@ class SoundManager {
     } catch {}
   }
 
+  // --- FRAME-DRIVEN ATTACK SOUNDS ---
+
+  public playWeaponRaiseSound() {
+    try {
+      this.initContext();
+      if (!this.ctx || !this.sfxGain) return;
+      const t = this.ctx.currentTime;
+
+      // Metallic blade draw / weapon raise sweep
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(420, t);
+      osc.frequency.exponentialRampToValueAtTime(1150, t + 0.22);
+
+      gain.gain.setValueAtTime(0.12, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+
+      osc.start(t);
+      osc.stop(t + 0.22);
+    } catch {}
+  }
+
+  public playChargingSound() {
+    try {
+      this.initContext();
+      if (!this.ctx || !this.sfxGain) return;
+      const t = this.ctx.currentTime;
+
+      // Energy charge building hum (rising pitch over 0.8s)
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(180, t);
+      osc.frequency.exponentialRampToValueAtTime(780, t + 0.8);
+
+      gain.gain.setValueAtTime(0.05, t);
+      gain.gain.linearRampToValueAtTime(0.14, t + 0.6);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.82);
+
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+
+      osc.start(t);
+      osc.stop(t + 0.82);
+    } catch {}
+  }
+
+  public playTriggerSound() {
+    try {
+      this.initContext();
+      if (!this.ctx || !this.sfxGain) return;
+      const t = this.ctx.currentTime;
+
+      // Crisp mechanical trigger click
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(1600, t);
+      osc.frequency.exponentialRampToValueAtTime(400, t + 0.05);
+
+      gain.gain.setValueAtTime(0.18, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+
+      osc.start(t);
+      osc.stop(t + 0.05);
+    } catch {}
+  }
+
+  public playGunFireSound() {
+    try {
+      this.initContext();
+      if (!this.ctx || !this.sfxGain) return;
+      const t = this.ctx.currentTime;
+
+      // Punchy energy blast with low-end punch
+      const osc1 = this.ctx.createOscillator();
+      const osc2 = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc1.type = 'triangle';
+      osc1.frequency.setValueAtTime(240, t);
+      osc1.frequency.exponentialRampToValueAtTime(50, t + 0.35);
+
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(950, t);
+      osc2.frequency.exponentialRampToValueAtTime(220, t + 0.25);
+
+      gain.gain.setValueAtTime(0.35, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(this.sfxGain);
+
+      osc1.start(t);
+      osc2.start(t);
+      osc1.stop(t + 0.35);
+      osc2.stop(t + 0.35);
+    } catch {}
+  }
+
   // --- ROUND & MATCH VICTORY/DEFEAT ---
 
   public playRoundWin() {

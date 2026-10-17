@@ -1,4 +1,6 @@
 import React from 'react';
+import { MaleFighterFramePlayer } from './MaleFighterFramePlayer';
+import { FrameEvent } from '../game/maleFighterConfig';
 
 export type CharacterActionState =
   | 'idle'
@@ -16,12 +18,20 @@ interface SideCharactersProps {
   isBattle?: boolean;
   leftState?: CharacterActionState;
   rightState?: CharacterActionState;
+  isMaleFrameAttack?: boolean;
+  onMaleFrameEvent?: (event: FrameEvent) => void;
+  onMaleAttackComplete?: () => void;
+  energyGlow?: boolean;
 }
 
 export const SideCharacters: React.FC<SideCharactersProps> = ({
   isBattle = false,
   leftState = 'idle',
-  rightState = 'idle'
+  rightState = 'idle',
+  isMaleFrameAttack = false,
+  onMaleFrameEvent,
+  onMaleAttackComplete,
+  energyGlow = false
 }) => {
   const getAnimClassLeft = () => {
     switch (leftState) {
@@ -75,7 +85,6 @@ export const SideCharacters: React.FC<SideCharactersProps> = ({
 
   // Select sprite for Blue Fighter (Left side)
   const getLeftSprite = () => {
-    if (leftState === 'attack') return '/assets/characters/p1_attack.png';
     if (leftState === 'hit' || leftState === 'defeat') return '/assets/characters/p1_hit.png';
     if (leftState === 'victory') return '/assets/characters/p1_victory.png';
     return '/assets/characters/p1_idle.png';
@@ -89,18 +98,21 @@ export const SideCharacters: React.FC<SideCharactersProps> = ({
     return '/assets/characters/p2_idle.png';
   };
 
+  const isLeftAttacking = isMaleFrameAttack || (isBattle && leftState === 'attack');
+
   return (
     <>
-      {/* Left Blue Fighter */}
+      {/* Left Blue Fighter (Frame-driven 240 frames attack animation) */}
       <div className={`side-fighter-left ${getAnimClassLeft()} ${isBattle ? 'battle-mode' : ''}`}>
-        <img
-          src={getLeftSprite()}
-          alt="Blue Fighter (Player 1)"
-          className="fighter-image"
-          draggable={false}
+        <MaleFighterFramePlayer
+          isPlaying={isLeftAttacking}
+          onFrameEvent={onMaleFrameEvent}
+          onComplete={onMaleAttackComplete}
+          fallbackSprite={getLeftSprite()}
+          energyGlow={energyGlow}
         />
         {/* Magic Aura when typing with high intensity */}
-        {(leftState === 'typing-mid' || leftState === 'typing-high') && (
+        {(leftState === 'typing-mid' || leftState === 'typing-high') && !isLeftAttacking && (
           <div className={`fighter-aura blue ${leftState === 'typing-high' ? 'high' : ''}`} />
         )}
       </div>

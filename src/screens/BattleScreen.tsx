@@ -206,21 +206,27 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         setState(prev => ({ ...prev, phase: 'finished' }));
         if (state.matchWinner === 'player') {
           setLeftPose('victory');
-          setRightPose('idle');
+          setRightPose('defeat');
           soundManager.playVictory();
 
           // Confetti celebration
           confetti({
-            particleCount: 100,
-            spread: 80,
+            particleCount: 120,
+            spread: 90,
             origin: { y: 0.6 }
           });
         } else {
           setRightPose('victory');
-          setLeftPose('idle');
+          setLeftPose('defeat');
           soundManager.playDefeat();
         }
       } else {
+        // Recover state
+        if (isPlayer) {
+          setRightPose('recover');
+        } else {
+          setLeftPose('recover');
+        }
         // Prepare next round without countdown
         soundManager.playRoundWin();
         roundTransitionTimeoutRef.current = window.setTimeout(() => {
@@ -267,6 +273,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const runFirstRoundCountdown = useCallback(() => {
     clearAllTimers();
     roundLockRef.current = true;
+    setLeftPose('ready');
+    setRightPose('ready');
     let count = 3;
 
     setState(prev => ({
@@ -288,6 +296,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         clearInterval(countdownIntervalRef.current!);
         countdownIntervalRef.current = null;
         roundLockRef.current = false;
+        setLeftPose('idle');
+        setRightPose('idle');
 
         setState(prev => {
           // Start bot typing right after GO
@@ -404,7 +414,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         <div className="hud-card-p1">
           <div className="hud-avatar-box">
             <img
-              src="/assets/extracted/p1_portrait.png"
+              src="/assets/characters/p1_portrait.png"
               alt="Player 1 Avatar"
               className="hud-avatar-img"
             />
@@ -429,7 +439,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
         {/* TOP CENTER LOGO & ROUND BADGE */}
         <div className="battle-center-top">
-          <TopLogo className="battle-logo-mini" />
+          <TopLogo className="battle-logo-mini" mini={true} />
           <div className="battle-round-badge">
             ROUND {state.round}
           </div>
@@ -455,7 +465,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
           </div>
           <div className="hud-avatar-box">
             <img
-              src="/assets/extracted/p2_portrait.png"
+              src="/assets/characters/p2_portrait.png"
               alt="Bot Avatar"
               className="hud-avatar-img"
             />

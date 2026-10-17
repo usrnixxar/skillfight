@@ -73,20 +73,18 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [screen]);
 
-  // Determine background image based on screen
+  // Determine original 2D background image based on screen
   const getBackgroundImage = () => {
     switch (screen) {
-      case 'modes':
-        return "url('/assets/reference/mode_select.jpg')";
-      case 'student':
-        return "url('/assets/reference/student_room.jpg')";
       case 'battle':
-        return "url('/assets/reference/battle_arena.jpg')";
+        return "url('/assets/backgrounds/battle_arena.jpg')";
+      case 'modes':
+      case 'student':
       case 'home':
       case 'settings':
       case 'quit':
       default:
-        return "url('/assets/reference/home_screen.jpg')";
+        return "url('/assets/backgrounds/home_bg.jpg')";
     }
   };
 

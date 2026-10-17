@@ -64,9 +64,9 @@ export const BattleFxCanvas: React.FC<BattleFxCanvasProps> = ({
       const elapsed = now - startTime;
       const progress = Math.min(elapsed / duration, 1);
 
-      // Coordinates: P1 hand ~34% width, 52% height; P2 chest ~76% width, 52% height
-      const startX = isP1 ? canvas.width * 0.33 : canvas.width * 0.75;
-      const targetX = isP1 ? canvas.width * 0.76 : canvas.width * 0.28;
+      // Coordinates: P1 hand ~33% width, 52% height; P2 hand ~68% width, 52% height
+      const startX = isP1 ? canvas.width * 0.33 : canvas.width * 0.68;
+      const targetX = isP1 ? canvas.width * 0.75 : canvas.width * 0.27;
       const beamY = canvas.height * 0.52;
 
       const currentX = startX + (targetX - startX) * progress;

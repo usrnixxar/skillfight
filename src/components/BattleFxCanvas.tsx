@@ -14,7 +14,7 @@ interface Particle {
 interface BattleFxCanvasProps {
   bulletActive: boolean;
   bulletDirection: 'player-to-bot' | 'bot-to-player';
-  onImpact: () => void;
+  onImpact?: () => void;
 }
 
 export const BattleFxCanvas: React.FC<BattleFxCanvasProps> = ({
@@ -141,7 +141,7 @@ export const BattleFxCanvas: React.FC<BattleFxCanvasProps> = ({
       // Trigger impact once reached target
       if (progress >= 1 && !hasImpactedRef.current) {
         hasImpactedRef.current = true;
-        onImpact();
+        if (onImpact) onImpact();
 
         // Spawn impact particle burst
         for (let i = 0; i < 28; i++) {

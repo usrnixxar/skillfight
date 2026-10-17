@@ -44,9 +44,9 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       currentWord: firstWord,
       playerInput: '',
       botInput: '',
-      botWpm: pickBotWpm(),
+      botWpm: Math.floor(diffConfig.minWpm + (diffConfig.maxWpm - diffConfig.minWpm) / 2),
       botProgress: 0,
-      phase: 'countdown', // First round must start with 3-second countdown
+      phase: 'countdown',
       countdownValue: 3,
       roundWinner: null,
       matchWinner: null,
@@ -58,88 +58,78 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     };
   });
 
+  // Always keep stateRef up to date to prevent any closure staleness
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
   const [inputError, setInputError] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Character poses
-  const [leftPose, setLeftPose] = useState<CharacterActionState>('idle');
-  const [rightPose, setRightPose] = useState<CharacterActionState>('idle');
+  // Character action poses
+  const [leftPose, setLeftPose] = useState<CharacterActionState>('ready');
+  const [rightPose, setRightPose] = useState<CharacterActionState>('ready');
 
-  // Timers refs
-  const botIntervalRef = useRef<number | null>(null);
+  // Timers and locks
+  const botTimeoutRef = useRef<number | null>(null);
   const countdownIntervalRef = useRef<number | null>(null);
-  const roundTransitionTimeoutRef = useRef<number | null>(null);
-  const roundLockRef = useRef(false);
+  const roundLockRef = useRef(true); // locked during countdown / transitions
+  const transitionTimeoutsRef = useRef<number[]>([]);
 
-  // Clean all timers
+  // Clear all pending timeouts and intervals safely
   const clearAllTimers = useCallback(() => {
-    if (botIntervalRef.current) {
-      clearInterval(botIntervalRef.current);
-      botIntervalRef.current = null;
+    if (botTimeoutRef.current) {
+      clearTimeout(botTimeoutRef.current);
+      botTimeoutRef.current = null;
     }
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
     }
-    if (roundTransitionTimeoutRef.current) {
-      clearTimeout(roundTransitionTimeoutRef.current);
-      roundTransitionTimeoutRef.current = null;
-    }
+    transitionTimeoutsRef.current.forEach(t => clearTimeout(t));
+    transitionTimeoutsRef.current = [];
   }, []);
 
-  // Launch Bot Typing Simulation
-  const startBotTyping = useCallback((targetWord: string, wpm: number) => {
-    if (botIntervalRef.current) {
-      clearInterval(botIntervalRef.current);
-    }
-
-    // Formula: typing time for word = (CharCount / 5 / WPM) * 60 seconds
-    // Delay per character = (60000 / (WPM * 5))
-    const baseCharDelay = 60000 / (wpm * 5);
-    let currentChars = 0;
-
-    const botStep = () => {
-      if (roundLockRef.current) return;
-
-      currentChars++;
-      const progress = currentChars / targetWord.length;
-
-      // Update right character typing excitement
-      if (progress < 0.4) {
-        setRightPose('typing-low');
-      } else if (progress < 0.8) {
-        setRightPose('typing-mid');
-      } else {
-        setRightPose('typing-high');
-      }
-
-      setState(prev => {
-        if (prev.phase !== 'typing' || roundLockRef.current) return prev;
-        const newBotInput = targetWord.slice(0, currentChars);
-
-        // Check if bot completed word
-        if (currentChars >= targetWord.length) {
-          handleRoundWin('bot');
-        }
-
-        return {
-          ...prev,
-          botInput: newBotInput,
-          botProgress: currentChars
-        };
-      });
-
-      // Natural jitter for next character (0.85x to 1.18x variation + occasional slight pause)
-      if (currentChars < targetWord.length && !roundLockRef.current) {
-        const pauseChance = Math.random() < 0.15 ? 120 : 0;
-        const nextDelay = baseCharDelay * (0.85 + Math.random() * 0.33) + pauseChance;
-        botIntervalRef.current = window.setTimeout(botStep, nextDelay);
-      }
-    };
-
-    // Bot initial start reaction latency (150-300ms)
-    botIntervalRef.current = window.setTimeout(botStep, 180 + Math.random() * 120);
+  // Safe timeout helper that tracks IDs for cleanup
+  const scheduleTimeout = useCallback((fn: () => void, delayMs: number) => {
+    const id = window.setTimeout(fn, delayMs);
+    transitionTimeoutsRef.current.push(id);
+    return id;
   }, []);
+
+  // Advance to next round smoothly
+  const advanceToNextRound = useCallback(() => {
+    const current = stateRef.current;
+    const nextWord = getRandomWord(difficulty, current.currentWord);
+    const nextWpm = pickBotWpm();
+
+    setLeftPose('idle');
+    setRightPose('idle');
+    setInputError(false);
+    roundLockRef.current = false;
+
+    setState(prev => ({
+      ...prev,
+      round: prev.round + 1,
+      currentWord: nextWord,
+      playerInput: '',
+      botInput: '',
+      botProgress: 0,
+      botWpm: nextWpm,
+      phase: 'typing',
+      roundWinner: null,
+      shakeActive: false,
+      bulletActive: false
+    }));
+
+    // Focus input field immediately
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 20);
+
+    // Launch bot typing for the new word
+    startBotTyping(nextWord, nextWpm);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [difficulty, pickBotWpm]);
 
   // Handle Win of a single word round
   const handleRoundWin = useCallback((winner: 'player' | 'bot') => {
@@ -150,8 +140,13 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
     const isPlayer = winner === 'player';
     const bulletDir = isPlayer ? 'player-to-bot' : 'bot-to-player';
+    const current = stateRef.current;
 
-    // Play attack sound and set attacker pose
+    const nextPlayerKills = isPlayer ? current.playerKills + 1 : current.playerKills;
+    const nextBotKills = !isPlayer ? current.botKills + 1 : current.botKills;
+    const matchWon = nextPlayerKills >= 3 ? 'player' : nextBotKills >= 3 ? 'bot' : null;
+
+    // STEP 1 (0ms): Attacker raises weapon/casts magic & fires projectile
     soundManager.playShoot(isPlayer);
     if (isPlayer) {
       setLeftPose('attack');
@@ -161,55 +156,49 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       setLeftPose('idle');
     }
 
-    setState(prev => {
-      const nextPlayerKills = isPlayer ? prev.playerKills + 1 : prev.playerKills;
-      const nextBotKills = !isPlayer ? prev.botKills + 1 : prev.botKills;
-      const matchWon = nextPlayerKills >= 3 ? 'player' : nextBotKills >= 3 ? 'bot' : null;
-
-      return {
-        ...prev,
-        phase: 'attack',
-        roundWinner: winner,
-        matchWinner: matchWon,
-        playerKills: nextPlayerKills,
-        botKills: nextBotKills,
-        bulletActive: true,
-        bulletDirection: bulletDir
-      };
-    });
-  }, [clearAllTimers]);
-
-  // Handle Projectile Impact callback from Canvas FX
-  const handleProjectileImpact = useCallback(() => {
-    const isPlayer = state.roundWinner === 'player';
-
-    // Play hit sound + screen shake
-    soundManager.playImpact(isPlayer);
-    if (isPlayer) {
-      setRightPose('hit');
-    } else {
-      setLeftPose('hit');
-    }
-
     setState(prev => ({
       ...prev,
-      shakeActive: !reducedMotion,
-      phase: 'hit'
+      phase: 'attack',
+      roundWinner: winner,
+      matchWinner: matchWon,
+      bulletActive: true,
+      bulletDirection: bulletDir
     }));
 
-    // Stop screen shake after 320ms
-    setTimeout(() => {
-      setState(prev => ({ ...prev, shakeActive: false, bulletActive: false }));
+    // STEP 2 (380ms): Projectile travels across screen and hits target
+    scheduleTimeout(() => {
+      soundManager.playImpact(isPlayer);
+      if (isPlayer) {
+        setRightPose('hit');
+      } else {
+        setLeftPose('hit');
+      }
 
-      // Check if match ended
-      if (state.matchWinner) {
+      setState(prev => ({
+        ...prev,
+        phase: 'hit',
+        playerKills: nextPlayerKills,
+        botKills: nextBotKills,
+        shakeActive: !reducedMotion
+      }));
+    }, 380);
+
+    // STEP 3 (720ms): Impact recoil finishes, stop shake & projectile
+    scheduleTimeout(() => {
+      setState(prev => ({
+        ...prev,
+        shakeActive: false,
+        bulletActive: false
+      }));
+
+      // Check if match ended (3 kills reached)
+      if (matchWon) {
         setState(prev => ({ ...prev, phase: 'finished' }));
-        if (state.matchWinner === 'player') {
+        if (matchWon === 'player') {
           setLeftPose('victory');
           setRightPose('defeat');
           soundManager.playVictory();
 
-          // Confetti celebration
           confetti({
             particleCount: 120,
             spread: 90,
@@ -221,53 +210,74 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
           soundManager.playDefeat();
         }
       } else {
-        // Recover state
+        // Round won, match continues!
         if (isPlayer) {
           setRightPose('recover');
         } else {
           setLeftPose('recover');
         }
-        // Prepare next round without countdown
         soundManager.playRoundWin();
-        roundTransitionTimeoutRef.current = window.setTimeout(() => {
+
+        // STEP 4 (1200ms): Smoothly start next round
+        scheduleTimeout(() => {
           advanceToNextRound();
-        }, 850);
+        }, 500);
       }
-    }, 350);
-  }, [state.roundWinner, state.matchWinner, reducedMotion]);
+    }, 720);
+  }, [clearAllTimers, scheduleTimeout, reducedMotion, advanceToNextRound]);
 
-  // Advance to next round (no countdown for round 2, 3...)
-  const advanceToNextRound = useCallback(() => {
-    roundLockRef.current = false;
-    setLeftPose('idle');
-    setRightPose('idle');
-    setInputError(false);
+  // Launch Bot Typing Simulation
+  const startBotTyping = useCallback((targetWord: string, wpm: number) => {
+    if (botTimeoutRef.current) {
+      clearTimeout(botTimeoutRef.current);
+      botTimeoutRef.current = null;
+    }
 
-    setState(prev => {
-      const nextWord = getRandomWord(difficulty, prev.currentWord);
-      const nextWpm = pickBotWpm();
+    // Formula: typing time for word = (CharCount / 5 / WPM) * 60 seconds
+    const baseCharDelay = 60000 / (wpm * 5);
+    let currentChars = 0;
 
-      // Launch bot for the new word immediately
-      setTimeout(() => {
-        startBotTyping(nextWord, nextWpm);
-        if (inputRef.current) {
-          inputRef.current.focus();
-        }
-      }, 50);
+    const botStep = () => {
+      if (roundLockRef.current) return;
 
-      return {
-        ...prev,
-        round: prev.round + 1,
-        currentWord: nextWord,
-        playerInput: '',
-        botInput: '',
-        botProgress: 0,
-        botWpm: nextWpm,
-        phase: 'typing',
-        roundWinner: null
-      };
-    });
-  }, [difficulty, pickBotWpm, startBotTyping]);
+      currentChars++;
+      const progress = currentChars / targetWord.length;
+
+      // Update right character typing excitement pose
+      if (progress < 0.4) {
+        setRightPose('typing-low');
+      } else if (progress < 0.8) {
+        setRightPose('typing-mid');
+      } else {
+        setRightPose('typing-high');
+      }
+
+      setState(prev => {
+        if (prev.phase !== 'typing') return prev;
+        return {
+          ...prev,
+          botInput: targetWord.slice(0, currentChars),
+          botProgress: currentChars
+        };
+      });
+
+      // Check if bot completed word
+      if (currentChars >= targetWord.length) {
+        handleRoundWin('bot');
+        return;
+      }
+
+      // Natural jitter for next character (0.85x to 1.18x variation + occasional slight pause)
+      if (!roundLockRef.current) {
+        const pauseChance = Math.random() < 0.12 ? 110 : 0;
+        const nextDelay = baseCharDelay * (0.85 + Math.random() * 0.3) + pauseChance;
+        botTimeoutRef.current = window.setTimeout(botStep, nextDelay);
+      }
+    };
+
+    // Bot initial start reaction latency (160-280ms)
+    botTimeoutRef.current = window.setTimeout(botStep, 180 + Math.random() * 100);
+  }, [handleRoundWin]);
 
   // Mandatory 3-second countdown for the FIRST round of match
   const runFirstRoundCountdown = useCallback(() => {
@@ -293,21 +303,27 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         setState(prev => ({ ...prev, countdownValue: 0 }));
         soundManager.playGoSound();
       } else {
-        clearInterval(countdownIntervalRef.current!);
-        countdownIntervalRef.current = null;
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+        }
         roundLockRef.current = false;
         setLeftPose('idle');
         setRightPose('idle');
 
-        setState(prev => {
-          // Start bot typing right after GO
-          startBotTyping(prev.currentWord, prev.botWpm);
-          setTimeout(() => inputRef.current?.focus(), 50);
-          return {
-            ...prev,
-            phase: 'typing'
-          };
-        });
+        const curWord = stateRef.current.currentWord;
+        const curWpm = stateRef.current.botWpm;
+
+        setState(prev => ({
+          ...prev,
+          phase: 'typing'
+        }));
+
+        // Focus typing input
+        setTimeout(() => inputRef.current?.focus(), 30);
+
+        // Start bot typing right after GO
+        startBotTyping(curWord, curWpm);
       }
     }, 1000);
   }, [clearAllTimers, startBotTyping]);
@@ -318,6 +334,21 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     return () => {
       clearAllTimers();
     };
+  }, [clearAllTimers, runFirstRoundCountdown]);
+
+  // Always keep typing input focused on keypress or screen click
+  useEffect(() => {
+    const handleGlobalKey = (e: KeyboardEvent) => {
+      if (stateRef.current.phase === 'typing' && !roundLockRef.current) {
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          if (document.activeElement !== inputRef.current) {
+            inputRef.current?.focus();
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKey);
+    return () => window.removeEventListener('keydown', handleGlobalKey);
   }, []);
 
   // Handle Player Typing Input
@@ -356,11 +387,11 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     }
   };
 
-  // Restart Match from scratch with fresh countdown (Section 13)
+  // Restart Match from scratch with fresh countdown
   const handlePlayAgain = () => {
     soundManager.playClick();
     clearAllTimers();
-    roundLockRef.current = false;
+    roundLockRef.current = true;
     const firstWord = getRandomWord(difficulty);
     const firstWpm = pickBotWpm();
 
@@ -384,14 +415,14 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       impactActive: false
     });
 
-    setLeftPose('idle');
-    setRightPose('idle');
+    setLeftPose('ready');
+    setRightPose('ready');
     setInputError(false);
 
     // Run 3s countdown again
     setTimeout(() => {
       runFirstRoundCountdown();
-    }, 50);
+    }, 60);
   };
 
   const handleExitMatch = () => {
@@ -407,7 +438,12 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const botHeartsLeft = Math.max(0, 3 - state.playerKills);
 
   return (
-    <div className={`screen-wrapper ${state.shakeActive ? 'screen-shake' : ''}`}>
+    <div
+      className={`screen-wrapper ${state.shakeActive ? 'screen-shake' : ''}`}
+      onClick={() => {
+        if (state.phase === 'typing') inputRef.current?.focus();
+      }}
+    >
       {/* TOP HUD BAR */}
       <div className="battle-hud-top">
         {/* P1 HUD (LEFT) */}
@@ -490,7 +526,6 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       <BattleFxCanvas
         bulletActive={state.bulletActive}
         bulletDirection={state.bulletDirection}
-        onImpact={handleProjectileImpact}
       />
 
       {/* 3-SECOND PRE-MATCH COUNTDOWN OVERLAY */}
@@ -506,7 +541,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       {/* BOTTOM TYPING BAR */}
       <div className="battle-bottom-bar">
         {/* PLAYER 1 TYPING BOX */}
-        <div className="typing-box-p1">
+        <div className="typing-box-p1" onClick={() => inputRef.current?.focus()}>
           <div className="typing-icon-diamond">◆</div>
           <input
             ref={inputRef}
@@ -600,3 +635,4 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     </div>
   );
 };
+export default BattleScreen;

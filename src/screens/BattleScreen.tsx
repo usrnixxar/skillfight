@@ -98,6 +98,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   // Independent shots are driven by each correctly entered letter.
   const [bullets, setBullets] = useState<LetterBullet[]>([]);
   const [shotCounts, setShotCounts] = useState({ player: 0, bot: 0 });
+  const shotCountsRef = useRef({ player: 0, bot: 0 });
   const [impactCount, setImpactCount] = useState(0);
   const [impactSide, setImpactSide] = useState<'player' | 'bot' | null>(null);
   const [roundBanner, setRoundBanner] = useState<'player' | 'bot' | null>(null);
@@ -146,7 +147,9 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     const shot: LetterBullet = {
       id: ++nextBulletId.current,
       from,
-      createdAt: performance.now()
+      // The first shot follows the 250ms gun-raise sequence.
+      // Later shots use the ready aiming stance immediately.
+      createdAt: performance.now() + (shotCountsRef.current[from] === 0 ? 250 : 0)
     };
     // One valid letter = one point of damage, independent of projectile duration.
     const victim = from === 'player' ? 'bot' : 'player';
@@ -154,7 +157,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     const health = { ...healthRef.current };
     setState(prev => ({ ...prev, playerHp: health.player, botHp: health.bot }));
     setBullets(prev => [...prev, shot]);
-    setShotCounts(prev => ({ ...prev, [from]: prev[from] + 1 }));
+    shotCountsRef.current[from]++;
+    setShotCounts({ ...shotCountsRef.current });
     soundManager.playGunFireSound();
     pose(from, 'fire', 105);
     // Each bullet registers its own visual impact, without awarding duplicate kills.
@@ -345,6 +349,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     setRoundBanner(null);
     setImpactCount(0);
     setImpactSide(null);
+    shotCountsRef.current = {player: 0, bot: 0};
     setShotCounts({ player: 0, bot: 0 });
     healthRef.current = { player: 100, bot: 100 };
     setInputError(false);

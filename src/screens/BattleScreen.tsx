@@ -3,16 +3,9 @@ import confetti from 'canvas-confetti';
 import { Heart, Check, ArrowRight, Trophy, Skull } from 'lucide-react';
 import { TopLogo } from '../components/TopLogo';
 import { SideCharacters, CharacterActionState } from '../components/SideCharacters';
-import { BattleFxCanvas } from '../components/BattleFxCanvas';
+import { BattleFxCanvas, LetterBullet } from '../components/BattleFxCanvas';
 import { soundManager } from '../audio/soundManager';
 import { getRandomWord } from '../game/wordBank';
-import { framePreloader } from '../game/framePreloader';
-import {
-  MALE_ATTACK_CONFIG,
-  MALE_ATTACK_EVENTS,
-  PROJECTILE_CONFIG,
-  FrameEvent
-} from '../game/maleFighterConfig';
 import {
   BotDifficulty,
   DIFFICULTY_CONFIGS,
@@ -76,493 +69,225 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const [leftPose, setLeftPose] = useState<CharacterActionState>('ready');
   const [rightPose, setRightPose] = useState<CharacterActionState>('ready');
 
-  // Male 240-frame animation state
-  const [isMaleAttacking, setIsMaleAttacking] = useState(false);
-  const [energyGlow, setEnergyGlow] = useState(false);
-
-  // Timers and locks
+  // Independent shots are driven by each correctly entered letter.
+  const [bullets, setBullets] = useState<LetterBullet[]>([]);
+  const nextBulletId = useRef(0);
   const botTimeoutRef = useRef<number | null>(null);
-  const countdownIntervalRef = useRef<number | null>(null);
-  const roundLockRef = useRef(true); // locked during countdown / transitions
-  const transitionTimeoutsRef = useRef<number[]>([]);
-  const hasAwardedKillRef = useRef(false);
+  const countdownRef = useRef<number | null>(null);
+  const timersRef = useRef<number[]>([]);
+  const roundLocked = useRef(true);
+  const winningShotRef = useRef<'player' | 'bot' | null>(null);
+  const lastPlayerInput = useRef('');
+  const currentPoseTimer = useRef<Record<string, number>>({});
 
-  // Clear all pending timeouts and intervals safely
-  const clearAllTimers = useCallback(() => {
-    if (botTimeoutRef.current) {
-      clearTimeout(botTimeoutRef.current);
-      botTimeoutRef.current = null;
-    }
-    if (countdownIntervalRef.current) {
-      clearInterval(countdownIntervalRef.current);
-      countdownIntervalRef.current = null;
-    }
-    transitionTimeoutsRef.current.forEach(t => clearTimeout(t));
-    transitionTimeoutsRef.current = [];
-  }, []);
+  const clearTimers = () => {
+    if (botTimeoutRef.current !== null) clearTimeout(botTimeoutRef.current);
+    if (countdownRef.current !== null) clearInterval(countdownRef.current);
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+    botTimeoutRef.current = null;
+    countdownRef.current = null;
+  };
 
-  // Safe timeout helper that tracks IDs for cleanup
-  const scheduleTimeout = useCallback((fn: () => void, delayMs: number) => {
-    const id = window.setTimeout(fn, delayMs);
-    transitionTimeoutsRef.current.push(id);
+  const later = (fn: () => void, ms: number) => {
+    const id = window.setTimeout(fn, ms);
+    timersRef.current.push(id);
     return id;
-  }, []);
+  };
 
-  // Advance to next round smoothly
-  const advanceToNextRound = useCallback(() => {
-    const current = stateRef.current;
-    const nextWord = getRandomWord(difficulty, current.currentWord);
-    const nextWpm = pickBotWpm();
-
-    setIsMaleAttacking(false);
-    setEnergyGlow(false);
-    setLeftPose('idle');
-    setRightPose('idle');
-    setInputError(false);
-    roundLockRef.current = false;
-    hasAwardedKillRef.current = false;
-
-    setState(prev => ({
-      ...prev,
-      round: prev.round + 1,
-      currentWord: nextWord,
-      playerInput: '',
-      botInput: '',
-      botProgress: 0,
-      botWpm: nextWpm,
-      phase: 'typing',
-      roundWinner: null,
-      shakeActive: false,
-      bulletActive: false
-    }));
-
-    // Focus input field immediately
-    setTimeout(() => {
-      inputRef.current?.focus();
-    }, 20);
-
-    // Launch bot typing for the new word
-    startBotTyping(nextWord, nextWpm);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [difficulty, pickBotWpm]);
-
-  // Handle projectile arrival at opponent
-  const onProjectileImpact = useCallback(() => {
-    if (hasAwardedKillRef.current) return;
-    hasAwardedKillRef.current = true;
-
-    const current = stateRef.current;
-    const isPlayer = current.roundWinner === 'player';
-
-    // Stop projectile and play impact sound + particle burst
-    soundManager.playImpact(isPlayer);
-
-    if (isPlayer) {
-      // Female opponent reacts with hit animation
-      setRightPose('hit');
-      const nextKills = current.playerKills + 1;
-      const matchWon = nextKills >= 3 ? 'player' : null;
-
-      setState(prev => ({
-        ...prev,
-        phase: 'hit',
-        playerKills: nextKills,
-        matchWinner: matchWon,
-        shakeActive: !reducedMotion,
-        bulletActive: false
-      }));
-
-      // Camera shake for 300ms
-      scheduleTimeout(() => {
-        setState(prev => ({ ...prev, shakeActive: false }));
-      }, PROJECTILE_CONFIG.screenShake.durationMs);
-
-    } else {
-      // Male player reacts with hit animation
-      setLeftPose('hit');
-      const nextKills = current.botKills + 1;
-      const matchWon = nextKills >= 3 ? 'bot' : null;
-
-      setState(prev => ({
-        ...prev,
-        phase: 'hit',
-        botKills: nextKills,
-        matchWinner: matchWon,
-        shakeActive: !reducedMotion,
-        bulletActive: false
-      }));
-
-      // Camera shake for 300ms
-      scheduleTimeout(() => {
-        setState(prev => ({ ...prev, shakeActive: false }));
-      }, PROJECTILE_CONFIG.screenShake.durationMs);
-    }
-  }, [reducedMotion, scheduleTimeout]);
-
-  // Frame event dispatcher from MaleFighterFramePlayer
-  const handleMaleFrameEvent = useCallback((event: FrameEvent) => {
-    switch (event.event) {
-      case 'ATTACK_START':
-        roundLockRef.current = true;
-        break;
-
-      case 'WEAPON_RAISE':
-        soundManager.playWeaponRaiseSound();
-        break;
-
-      case 'AIM_START':
-        // Character is aiming
-        break;
-
-      case 'ENERGY_CHARGE_START':
-        soundManager.playChargingSound();
-        break;
-
-      case 'CHARGE_PEAK':
-        setEnergyGlow(true);
-        break;
-
-      case 'TRIGGER_PRESS':
-        soundManager.playTriggerSound();
-        break;
-
-      case 'PROJECTILE_RELEASE':
-        // Launch blue projectile traveling left to right
-        setState(prev => ({
-          ...prev,
-          bulletActive: true,
-          bulletDirection: 'player-to-bot'
-        }));
-
-        // Projectile reaches opponent after projectileDurationMs (350ms)
-        scheduleTimeout(() => {
-          onProjectileImpact();
-        }, PROJECTILE_CONFIG.projectileDurationMs);
-        break;
-
-      case 'FIRING_SOUND':
-        soundManager.playGunFireSound();
-        break;
-
-      case 'MUZZLE_FLASH_END':
-        setEnergyGlow(false);
-        break;
-
-      case 'RECOVERY_START':
-        // Recovery must follow the registered projectile impact/hit, never precede it.
-        if (hasAwardedKillRef.current && stateRef.current.roundWinner === 'player') {
-          setRightPose('recover');
-          soundManager.playRoundWin();
+  const pose = (side: 'player' | 'bot', action: CharacterActionState, delay = 0) => {
+    const key = side;
+    window.clearTimeout(currentPoseTimer.current[key]);
+    if (side === 'player') setLeftPose(action);
+    else setRightPose(action);
+    if (delay) {
+      currentPoseTimer.current[key] = later(() => {
+        if (stateRef.current.phase !== 'finished') {
+          if (side === 'player') setLeftPose('aim');
+          else setRightPose('aim');
         }
-        break;
-
-      // ATTACK_COMPLETE is handled only by MaleFighterFramePlayer.onComplete.
-      // Dispatching it as a frame event too would advance the round twice.
-
-      default:
-        break;
-    }
-  }, [onProjectileImpact, scheduleTimeout]);
-
-  // Triggered when male fighter reaches frame 240
-  const handleMaleAttackComplete = useCallback(() => {
-    setIsMaleAttacking(false);
-    setEnergyGlow(false);
-    setLeftPose('idle');
-    setRightPose('idle');
-
-    const current = stateRef.current;
-    if (current.playerKills >= 3) {
-      // Victory for player!
-      setState(prev => ({ ...prev, phase: 'finished', matchWinner: 'player' }));
-      setLeftPose('victory');
-      setRightPose('defeat');
-      soundManager.playVictory();
-
-      confetti({
-        particleCount: 130,
-        spread: 90,
-        origin: { y: 0.6 }
-      });
-    } else {
-      // Advance to next round smoothly
-      advanceToNextRound();
-    }
-  }, [advanceToNextRound]);
-
-  // Handle Win of a single word round
-  const handleRoundWin = useCallback((winner: 'player' | 'bot') => {
-    if (roundLockRef.current) return;
-    roundLockRef.current = true;
-    hasAwardedKillRef.current = false;
-
-    clearAllTimers();
-
-    const isPlayer = winner === 'player';
-
-    if (isPlayer) {
-      // MALE FRAME-DRIVEN ATTACK SEQUENCE
-      // Gameplay state sequence:
-      // WORD_COMPLETED ↓ LOCK_ROUND ↓ MALE_ATTACK_START ↓ WEAPON_RAISE ↓ AIM ↓ TRIGGER / ENERGY_CHARGE ↓ PROJECTILE_RELEASE ↓ PROJECTILE_TRAVEL ↓ IMPACT + FEMALE_HIT + SCREEN_SHAKE ↓ RECOVERY ↓ ATTACK_COMPLETE ↓ NEXT_ROUND or VICTORY
-      setLeftPose('attack');
-      setRightPose('idle');
-      setIsMaleAttacking(true);
-
-      setState(prev => ({
-        ...prev,
-        phase: 'attack',
-        roundWinner: 'player',
-        bulletActive: false
-      }));
-
-    } else {
-      // BOT (FEMALE FIGHTER) ATTACK SEQUENCE
-      soundManager.playShoot(false);
-      setRightPose('attack');
-      setLeftPose('idle');
-
-      setState(prev => ({
-        ...prev,
-        phase: 'attack',
-        roundWinner: 'bot',
-        bulletActive: true,
-        bulletDirection: 'bot-to-player'
-      }));
-
-      // Pink projectile reaches male fighter after 350ms
-      scheduleTimeout(() => {
-        onProjectileImpact();
-      }, 350);
-
-      // Recovery at 750ms
-      scheduleTimeout(() => {
-        setLeftPose('recover');
-        setRightPose('idle');
-      }, 750);
-
-      // Complete round or match at 1350ms
-      scheduleTimeout(() => {
-        const cur = stateRef.current;
-        if (cur.botKills >= 3) {
-          setState(prev => ({ ...prev, phase: 'finished', matchWinner: 'bot' }));
-          setRightPose('victory');
-          setLeftPose('defeat');
-          soundManager.playDefeat();
-        } else {
-          advanceToNextRound();
-        }
-      }, 1350);
-    }
-  }, [clearAllTimers, onProjectileImpact, scheduleTimeout, advanceToNextRound]);
-
-  // Launch Bot Typing Simulation
-  const startBotTyping = useCallback((targetWord: string, wpm: number) => {
-    if (botTimeoutRef.current) {
-      clearTimeout(botTimeoutRef.current);
-      botTimeoutRef.current = null;
-    }
-
-    // Formula: typing time for word = (CharCount / 5 / WPM) * 60 seconds
-    const baseCharDelay = 60000 / (wpm * 5);
-    let currentChars = 0;
-
-    const botStep = () => {
-      if (roundLockRef.current) return;
-
-      currentChars++;
-      const progress = currentChars / targetWord.length;
-
-      // Update right character typing excitement pose
-      if (progress < 0.4) {
-        setRightPose('typing-low');
-      } else if (progress < 0.8) {
-        setRightPose('typing-mid');
-      } else {
-        setRightPose('typing-high');
-      }
-
-      setState(prev => {
-        if (prev.phase !== 'typing') return prev;
-        return {
-          ...prev,
-          botInput: targetWord.slice(0, currentChars),
-          botProgress: currentChars
-        };
-      });
-
-      // Check if bot completed word
-      if (currentChars >= targetWord.length) {
-        handleRoundWin('bot');
-        return;
-      }
-
-      // Natural jitter for next character (0.85x to 1.18x variation + occasional slight pause)
-      if (!roundLockRef.current) {
-        const pauseChance = Math.random() < 0.12 ? 110 : 0;
-        const nextDelay = baseCharDelay * (0.85 + Math.random() * 0.3) + pauseChance;
-        botTimeoutRef.current = window.setTimeout(botStep, nextDelay);
-      }
-    };
-
-    // Bot initial start reaction latency (160-280ms)
-    botTimeoutRef.current = window.setTimeout(botStep, 180 + Math.random() * 100);
-  }, [handleRoundWin]);
-
-  // Mandatory 3-second countdown for the FIRST round of match
-  const runFirstRoundCountdown = useCallback(() => {
-    clearAllTimers();
-    roundLockRef.current = true;
-    setLeftPose('ready');
-    setRightPose('ready');
-    let count = 3;
-
-    setState(prev => ({
-      ...prev,
-      phase: 'countdown',
-      countdownValue: 3
-    }));
-    soundManager.playCountdownTick(3);
-
-    countdownIntervalRef.current = window.setInterval(() => {
-      count--;
-      if (count > 0) {
-        setState(prev => ({ ...prev, countdownValue: count }));
-        soundManager.playCountdownTick(count);
-      } else if (count === 0) {
-        setState(prev => ({ ...prev, countdownValue: 0 }));
-        soundManager.playGoSound();
-      } else {
-        if (countdownIntervalRef.current) {
-          clearInterval(countdownIntervalRef.current);
-          countdownIntervalRef.current = null;
-        }
-        roundLockRef.current = false;
-        setLeftPose('idle');
-        setRightPose('idle');
-
-        const curWord = stateRef.current.currentWord;
-        const curWpm = stateRef.current.botWpm;
-
-        setState(prev => ({
-          ...prev,
-          phase: 'typing'
-        }));
-
-        // Focus typing input
-        setTimeout(() => inputRef.current?.focus(), 30);
-
-        // Start bot typing right after GO
-        startBotTyping(curWord, curWpm);
-      }
-    }, 1000);
-  }, [clearAllTimers, startBotTyping]);
-
-  // Preload all 240 frames and initialize first round on mount
-  useEffect(() => {
-    framePreloader.preloadAll();
-    runFirstRoundCountdown();
-    return () => {
-      clearAllTimers();
-      setIsMaleAttacking(false);
-    };
-  }, [clearAllTimers, runFirstRoundCountdown]);
-
-  // Always keep typing input focused on keypress or screen click
-  useEffect(() => {
-    const handleGlobalKey = (e: KeyboardEvent) => {
-      if (stateRef.current.phase === 'typing' && !roundLockRef.current) {
-        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-          if (document.activeElement !== inputRef.current) {
-            inputRef.current?.focus();
-          }
-        }
-      }
-    };
-    window.addEventListener('keydown', handleGlobalKey);
-    return () => window.removeEventListener('keydown', handleGlobalKey);
-  }, []);
-
-  // Handle Player Typing Input
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (state.phase !== 'typing' || roundLockRef.current) return;
-
-    const typed = e.target.value.toUpperCase();
-    const target = state.currentWord;
-
-    // Check if typed string is prefix of target word
-    if (target.startsWith(typed)) {
-      soundManager.playTypingKey();
-      setInputError(false);
-
-      // Update excitement level as progress increases
-      const progress = typed.length / target.length;
-      if (progress < 0.4) {
-        setLeftPose('typing-low');
-      } else if (progress < 0.8) {
-        setLeftPose('typing-mid');
-      } else {
-        setLeftPose('typing-high');
-      }
-
-      setState(prev => ({ ...prev, playerInput: typed }));
-
-      // Complete word match -> Win immediately without requiring Enter!
-      if (typed === target) {
-        handleRoundWin('player');
-      }
-    } else {
-      // Incorrect character
-      soundManager.playTypeError();
-      setInputError(true);
-      setState(prev => ({ ...prev, playerInput: typed }));
+      }, delay);
     }
   };
 
-  // Restart Match from scratch with fresh countdown
-  const handlePlayAgain = () => {
-    soundManager.playClick();
-    clearAllTimers();
-    roundLockRef.current = true;
-    setIsMaleAttacking(false);
-    setEnergyGlow(false);
-    hasAwardedKillRef.current = false;
-    const firstWord = getRandomWord(difficulty);
-    const firstWpm = pickBotWpm();
+  const fire = (from: 'player' | 'bot') => {
+    if (roundLocked.current) return;
+    const shot: LetterBullet = {
+      id: ++nextBulletId.current,
+      from,
+      createdAt: performance.now()
+    };
+    setBullets(prev => [...prev, shot]);
+    soundManager.playGunFireSound();
+    pose(from, 'fire', 105);
+    // Keep a shot visible through impact; only visual impact occurs here.
+    // Scoring is resolved by first word completion, preventing duplicate wins.
+    later(() => setBullets(prev => prev.filter(b => b.id !== shot.id)), 430);
+  };
 
-    setState({
-      round: 1,
-      playerKills: 0,
-      botKills: 0,
-      currentWord: firstWord,
-      playerInput: '',
-      botInput: '',
-      botWpm: firstWpm,
-      botProgress: 0,
-      phase: 'countdown',
-      countdownValue: 3,
-      roundWinner: null,
-      matchWinner: null,
-      shakeActive: false,
-      bulletActive: false,
-      bulletDirection: 'player-to-bot',
-      bulletProgress: 0,
-      impactActive: false
-    });
+  const finishRound = (winner: 'player' | 'bot') => {
+    if (roundLocked.current || winningShotRef.current) return;
+    winningShotRef.current = winner;
+    roundLocked.current = true;
+    if (botTimeoutRef.current !== null) clearTimeout(botTimeoutRef.current);
+    const playerWon = winner === 'player';
+    setState(prev => ({
+      ...prev,
+      phase: 'hit',
+      roundWinner: winner,
+      playerKills: prev.playerKills + (playerWon ? 1 : 0),
+      botKills: prev.botKills + (playerWon ? 0 : 1),
+      matchWinner: (playerWon ? prev.playerKills : prev.botKills) + 1 >= 3 ? winner : null
+    }));
+    // Let the last fired shot arrive before ending the round.
+    later(() => {
+      pose(playerWon ? 'bot' : 'player', 'hit');
+      soundManager.playImpact(playerWon);
+    }, 220);
+    later(() => {
+      const cur = stateRef.current;
+      if (cur.matchWinner) {
+        setState(prev => ({ ...prev, phase: 'finished' }));
+        setLeftPose(cur.matchWinner === 'player' ? 'victory' : 'defeat');
+        setRightPose(cur.matchWinner === 'bot' ? 'victory' : 'defeat');
+        if (cur.matchWinner === 'player') {
+          soundManager.playVictory();
+          confetti({ particleCount: 130, spread: 90, origin: { y: 0.6 } });
+        } else soundManager.playDefeat();
+        return;
+      }
+      const nextWord = getRandomWord(difficulty, cur.currentWord);
+      const nextWpm = pickBotWpm();
+      winningShotRef.current = null;
+      lastPlayerInput.current = '';
+      setLeftPose('idle');
+      setRightPose('idle');
+      setInputError(false);
+      roundLocked.current = false;
+      setState(prev => ({
+        ...prev, round: prev.round + 1, currentWord: nextWord,
+        botWpm: nextWpm, playerInput: '', botInput: '',
+        botProgress: 0, phase: 'typing', roundWinner: null
+      }));
+      later(() => inputRef.current?.focus(), 30);
+      startBotTyping(nextWord, nextWpm);
+    }, 650);
+  };
 
+  const startBotTyping = (word: string, wpm: number) => {
+    if (botTimeoutRef.current !== null) clearTimeout(botTimeoutRef.current);
+    const delay = 60000 / (wpm * 5);
+    let count = 0;
+    const tick = () => {
+      if (roundLocked.current) return;
+      count++;
+      setState(prev => ({ ...prev, botInput: word.slice(0, count), botProgress: count }));
+      fire('bot');
+      if (count >= word.length) {
+        finishRound('bot');
+        return;
+      }
+      botTimeoutRef.current = window.setTimeout(tick, delay * (0.85 + Math.random() * 0.3));
+    };
+    botTimeoutRef.current = window.setTimeout(tick, 180 + Math.random() * 100);
+  };
+
+  const runCountdown = () => {
+    clearTimers();
+    roundLocked.current = true;
+    winningShotRef.current = null;
+    lastPlayerInput.current = '';
     setLeftPose('ready');
     setRightPose('ready');
-    setInputError(false);
+    let n = 3;
+    setState(prev => ({ ...prev, phase: 'countdown', countdownValue: 3 }));
+    soundManager.playCountdownTick(3);
+    countdownRef.current = window.setInterval(() => {
+      n--;
+      if (n > 0) {
+        setState(prev => ({ ...prev, countdownValue: n }));
+        soundManager.playCountdownTick(n);
+      } else if (n === 0) {
+        setState(prev => ({ ...prev, countdownValue: 0 }));
+        soundManager.playGoSound();
+      } else {
+        if (countdownRef.current !== null) clearInterval(countdownRef.current);
+        countdownRef.current = null;
+        roundLocked.current = false;
+        setLeftPose('idle');
+        setRightPose('idle');
+        setState(prev => ({ ...prev, phase: 'typing' }));
+        later(() => inputRef.current?.focus(), 30);
+        startBotTyping(stateRef.current.currentWord, stateRef.current.botWpm);
+      }
+    }, 1000);
+  };
 
-    // Run 3s countdown again
-    setTimeout(() => {
-      runFirstRoundCountdown();
-    }, 60);
+  // Initialize once per mounted battle, preserving 3-2-1-GO countdown.
+  useEffect(() => {
+    runCountdown();
+    return () => {
+      clearTimers();
+      Object.values(currentPoseTimer.current).forEach(clearTimeout);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const focusOnTyping = (e: KeyboardEvent) => {
+      if (stateRef.current.phase === 'typing' && !roundLocked.current &&
+          e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', focusOnTyping);
+    return () => window.removeEventListener('keydown', focusOnTyping);
+  }, []);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (stateRef.current.phase !== 'typing' || roundLocked.current) return;
+    const typed = e.target.value.toUpperCase();
+    const target = stateRef.current.currentWord;
+    // Deletions and incorrect characters cannot fire a bullet.
+    if (!target.startsWith(typed)) {
+      setInputError(true);
+      soundManager.playTypeError();
+      return;
+    }
+    const previous = lastPlayerInput.current;
+    lastPlayerInput.current = typed;
+    setInputError(false);
+    setState(prev => ({ ...prev, playerInput: typed }));
+    if (typed.length > previous.length) {
+      for (let i = previous.length; i < typed.length; i++) fire('player');
+      if (typed === target) finishRound('player');
+    }
+  };
+
+  const handlePlayAgain = () => {
+    soundManager.playClick();
+    clearTimers();
+    setBullets([]);
+    setInputError(false);
+    lastPlayerInput.current = '';
+    winningShotRef.current = null;
+    roundLocked.current = true;
+    const word = getRandomWord(difficulty);
+    setState({
+      round: 1, playerKills: 0, botKills: 0, currentWord: word,
+      playerInput: '', botInput: '', botWpm: pickBotWpm(),
+      botProgress: 0, phase: 'countdown', countdownValue: 3,
+      roundWinner: null, matchWinner: null, shakeActive: false,
+      bulletActive: false, bulletDirection: 'player-to-bot',
+      bulletProgress: 0, impactActive: false
+    });
+    // Countdown starts on the next tick after the fresh match state commits.
+    later(runCountdown, 20);
   };
 
   const handleExitMatch = () => {
     soundManager.playClick();
-    clearAllTimers();
-    setIsMaleAttacking(false);
+    clearTimers();
     onNavigate('modes');
   };
 
@@ -650,22 +375,9 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         <div className="word-card-target">{state.currentWord}</div>
       </div>
 
-      {/* PERSISTENT COMBAT SIDE CHARACTERS (Left uses MaleFighterFramePlayer 240 frames) */}
-      <SideCharacters
-        isBattle={true}
-        leftState={leftPose}
-        rightState={rightPose}
-        isMaleFrameAttack={isMaleAttacking}
-        onMaleFrameEvent={handleMaleFrameEvent}
-        onMaleAttackComplete={handleMaleAttackComplete}
-        energyGlow={energyGlow}
-      />
-
-      {/* 60 FPS PROJECTILE & PARTICLE FX CANVAS */}
-      <BattleFxCanvas
-        bulletActive={state.bulletActive}
-        bulletDirection={state.bulletDirection}
-      />
+      {/* Both gunfighters fire independently on every correct letter. */}
+      <SideCharacters isBattle leftState={leftPose} rightState={rightPose} />
+      <BattleFxCanvas bullets={bullets} />
 
       {/* 3-SECOND PRE-MATCH COUNTDOWN OVERLAY */}
       {state.phase === 'countdown' && (

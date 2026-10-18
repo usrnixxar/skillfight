@@ -1,217 +1,103 @@
 import React, { useEffect, useRef } from 'react';
 
-interface Particle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  maxLife: number;
-  size: number;
-  color: string;
+export interface LetterBullet {
+  id: number;
+  from: 'player' | 'bot';
+  createdAt: number;
 }
 
 interface BattleFxCanvasProps {
-  bulletActive: boolean;
-  bulletDirection: 'player-to-bot' | 'bot-to-player';
-  onImpact?: () => void;
+  bullets: LetterBullet[];
+  onImpact?: (bullet: LetterBullet) => void;
 }
 
-export const BattleFxCanvas: React.FC<BattleFxCanvasProps> = ({
-  bulletActive,
-  bulletDirection,
-  onImpact
-}) => {
+// One uninterrupted browser-refresh-synchronized animation loop; overlapping bullets
+// remain independent, so fast typing cannot reset a previous projectile.
+export const BattleFxCanvas: React.FC<BattleFxCanvasProps> = ({ bullets, onImpact }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const animFrameRef = useRef<number | null>(null);
-  const particlesRef = useRef<Particle[]>([]);
-  const hasImpactedRef = useRef(false);
+  const bulletsRef = useRef(bullets);
+  const impactRef = useRef(onImpact);
+  const impactedRef = useRef(new Set<number>());
+  bulletsRef.current = bullets;
+  impactRef.current = onImpact;
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    // Resize canvas to match display size
+    let raf = 0;
+    let active = true;
     const updateSize = () => {
-      canvas.width = canvas.parentElement?.clientWidth || window.innerWidth;
-      canvas.height = canvas.parentElement?.clientHeight || window.innerHeight;
+      const rect = canvas.getBoundingClientRect();
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.max(1, Math.round(rect.width * ratio));
+      canvas.height = Math.max(1, Math.round(rect.height * ratio));
     };
     updateSize();
     window.addEventListener('resize', updateSize);
 
-    if (!bulletActive) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      particlesRef.current = [];
-      hasImpactedRef.current = false;
-      return () => {
-        window.removeEventListener('resize', updateSize);
-      };
-    }
+    const draw = (now: number) => {
+      if (!active) return;
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      const duration = 220;
+      const visible = bulletsRef.current;
+      for (const shot of visible) {
+        const progress = Math.max(0, Math.min(1, (now - shot.createdAt) / duration));
+        const player = shot.from === 'player';
+        const x0 = w * (player ? 0.32 : 0.68);
+        const x1 = w * (player ? 0.72 : 0.28);
+        const y = h * 0.51;
+        const x = x0 + (x1 - x0) * progress;
+        const color = player ? '#48bfff' : '#ff70b5';
 
-    hasImpactedRef.current = false;
-    const startTime = performance.now();
-    const duration = 420; // 420ms projectile flight time
-
-    const isP1 = bulletDirection === 'player-to-bot';
-    const mainColor = isP1 ? '#4ba0f7' : '#ea5e92';
-    const coreColor = '#ffffff';
-
-    const render = (now: number) => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-
-      // Coordinates: P1 hand ~33% width, 52% height; P2 hand ~68% width, 52% height
-      const startX = isP1 ? canvas.width * 0.33 : canvas.width * 0.68;
-      const targetX = isP1 ? canvas.width * 0.75 : canvas.width * 0.27;
-      const beamY = canvas.height * 0.52;
-
-      const currentX = startX + (targetX - startX) * progress;
-
-      // Spawn motion trail particles while moving
-      if (progress < 1) {
-        for (let i = 0; i < 3; i++) {
-          particlesRef.current.push({
-            x: currentX - (isP1 ? 1 : -1) * Math.random() * 20,
-            y: beamY + (Math.random() - 0.5) * 14,
-            vx: (isP1 ? -1 : 1) * (1 + Math.random() * 3),
-            vy: (Math.random() - 0.5) * 2,
-            life: 1,
-            maxLife: 15 + Math.random() * 10,
-            size: 2 + Math.random() * 3,
-            color: mainColor
-          });
+        if (progress >= 1 && !impactedRef.current.has(shot.id)) {
+          impactedRef.current.add(shot.id);
+          impactRef.current?.(shot);
         }
+        ctx.save();
+        ctx.shadowColor = color;
+        ctx.shadowBlur = w * 0.012;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.ellipse(x, y, Math.max(3, w * 0.005), Math.max(2, h * 0.004), 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
 
-        // Draw muzzle flash at origin during first 100ms
-        if (progress < 0.25) {
+        if (progress < 0.18) {
           ctx.save();
-          const flashGrad = ctx.createRadialGradient(startX, beamY, 2, startX, beamY, 35);
-          flashGrad.addColorStop(0, '#ffffff');
-          flashGrad.addColorStop(0.5, mainColor);
-          flashGrad.addColorStop(1, 'transparent');
-          ctx.fillStyle = flashGrad;
+          ctx.globalAlpha = 1 - progress / 0.18;
+          ctx.fillStyle = '#fff2bb';
           ctx.beginPath();
-          ctx.arc(startX, beamY, 35, 0, Math.PI * 2);
+          ctx.arc(x0, y, w * 0.016, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
         }
-
-        // Draw glowing energy dart/lance
-        ctx.save();
-        const beamLen = canvas.width * 0.08;
-        const tailX = isP1 ? currentX - beamLen : currentX + beamLen;
-
-        // Outer glow
-        ctx.shadowColor = mainColor;
-        ctx.shadowBlur = 18;
-
-        const grad = ctx.createLinearGradient(tailX, beamY, currentX, beamY);
-        grad.addColorStop(0, 'transparent');
-        grad.addColorStop(0.7, mainColor);
-        grad.addColorStop(1, coreColor);
-
-        ctx.strokeStyle = grad;
-        ctx.lineWidth = 7;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(tailX, beamY);
-        ctx.lineTo(currentX, beamY);
-        ctx.stroke();
-
-        // Inner core
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(tailX + (currentX - tailX) * 0.5, beamY);
-        ctx.lineTo(currentX, beamY);
-        ctx.stroke();
-
-        // Arrow tip head
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(currentX, beamY, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-
-      // Trigger impact once reached target
-      if (progress >= 1 && !hasImpactedRef.current) {
-        hasImpactedRef.current = true;
-        if (onImpact) onImpact();
-
-        // Spawn impact particle burst
-        for (let i = 0; i < 28; i++) {
-          const angle = Math.random() * Math.PI * 2;
-          const speed = 2 + Math.random() * 6;
-          particlesRef.current.push({
-            x: targetX,
-            y: beamY,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            life: 1,
-            maxLife: 20 + Math.random() * 15,
-            size: 3 + Math.random() * 4,
-            color: Math.random() > 0.4 ? mainColor : '#ffffff'
-          });
+        if (progress >= 1) {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, 1 - (now - shot.createdAt - duration) / 140);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = Math.max(2, w * 0.003);
+          ctx.beginPath();
+          ctx.arc(x1, y, w * 0.024, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
         }
       }
-
-      // Draw and update particles
-      for (let i = particlesRef.current.length - 1; i >= 0; i--) {
-        const p = particlesRef.current[i];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.life -= 1 / p.maxLife;
-
-        if (p.life <= 0) {
-          particlesRef.current.splice(i, 1);
-          continue;
-        }
-
-        ctx.save();
-        ctx.globalAlpha = p.life;
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-
-      // Impact burst flash
-      if (hasImpactedRef.current && progress >= 1 && elapsed < duration + 200) {
-        const flashProgress = (elapsed - duration) / 200;
-        const radius = 10 + flashProgress * 45;
-        const alpha = Math.max(0, 1 - flashProgress);
-
-        ctx.save();
-        const impactGrad = ctx.createRadialGradient(targetX, beamY, 2, targetX, beamY, radius);
-        impactGrad.addColorStop(0, '#ffffff');
-        impactGrad.addColorStop(0.6, mainColor);
-        impactGrad.addColorStop(1, 'transparent');
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = impactGrad;
-        ctx.beginPath();
-        ctx.arc(targetX, beamY, radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-
-      if (progress < 1 || particlesRef.current.length > 0) {
-        animFrameRef.current = requestAnimationFrame(render);
-      }
+      // Forget completed projectiles only after the parent drops them.
+      const liveIds = new Set(visible.map(b => b.id));
+      impactedRef.current.forEach(id => { if (!liveIds.has(id)) impactedRef.current.delete(id); });
+      raf = requestAnimationFrame(draw);
     };
-
-    animFrameRef.current = requestAnimationFrame(render);
-
+    raf = requestAnimationFrame(draw);
     return () => {
+      active = false;
+      cancelAnimationFrame(raf);
       window.removeEventListener('resize', updateSize);
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [bulletActive, bulletDirection, onImpact]);
+  }, []);
 
   return <canvas ref={canvasRef} className="battle-canvas-fx" />;
 };

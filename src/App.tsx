@@ -61,8 +61,8 @@ export const App: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (screen === 'battle') {
-          soundManager.playClick();
-          setScreen('modes');
+          // Battle owns its pause / resume keyboard interaction.
+          return;
         } else if (screen === 'modes' || screen === 'settings' || screen === 'quit' || screen === 'student') {
           soundManager.playClick();
           setScreen('home');
@@ -132,6 +132,8 @@ export const App: React.FC = () => {
           playerName={settings.playerName}
           onNavigate={setScreen}
           reducedMotion={settings.reducedMotion}
+          audioSettings={settings}
+          onUpdateAudioSettings={handleUpdateSettings}
         />
       )}
     </div>

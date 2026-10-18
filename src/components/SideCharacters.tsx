@@ -39,7 +39,7 @@ function Fighter({ side, state, shots }: { side: 'male2' | 'female2'; state: Cha
     setLoaded(false);
     Promise.all(frames.map(name => new Promise<void>(resolve => {
       const img = new Image();
-      img.onload = () => { img.decode?.().catch(() => {}).finally(resolve) ?? resolve(); };
+      img.onload = () => { if (img.decode) void img.decode().catch(() => {}).then(() => resolve()); else resolve(); };
       img.onerror = () => resolve();
       img.src = `/assets/characters/${side}/${name}`;
     }))).then(() => { if (!cancelled) setLoaded(true); });
@@ -72,8 +72,8 @@ function Fighter({ side, state, shots }: { side: 'male2' | 'female2'; state: Cha
   useEffect(() => {
     const delta = Math.max(0, shots - lastShots.current);
     lastShots.current = shots;
-    if (!delta || !loaded) return;
     pending.current += delta;
+    if (!loaded || pending.current === 0) return;
     if (!raised.current) {
       // Lock the first raise sequence; new letters append to the firing queue.
       raised.current = true;

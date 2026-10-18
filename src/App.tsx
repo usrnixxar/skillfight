@@ -77,7 +77,7 @@ export const App: React.FC = () => {
   const getBackgroundImage = () => {
     switch (screen) {
       case 'battle':
-        return "url('/assets/backgrounds/battle_arena.jpg')";
+        return "url('/assets/backgrounds/level-surface.png')";
       case 'modes':
       case 'student':
       case 'home':
@@ -93,6 +93,9 @@ export const App: React.FC = () => {
       className="game-viewport"
       style={{ backgroundImage: getBackgroundImage() }}
     >
+      {(screen === 'home' || screen === 'modes') && (
+        <video className="menu-loop-video" src="/assets/video/menu-loop.mp4" autoPlay muted loop playsInline preload="auto" aria-hidden="true" />
+      )}
       {screen === 'home' && (
         <HomeScreen onNavigate={setScreen} />
       )}

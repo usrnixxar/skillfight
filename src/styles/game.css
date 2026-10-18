@@ -1612,3 +1612,60 @@ body.reduced-motion * {
   .mobile-keyboard-shortcut {font-size:clamp(10px,1.8vw,16px);}
   .mobile-keyboard-panel small {font-size:10px;}
 }
+
+
+/* Student onboarding is one focused popup instead of stacked room cards. */
+.student-popup-screen {position:relative; isolation:isolate;}
+.student-popup-overlay {
+  position:absolute; inset:0; z-index:40;
+  display:flex; align-items:center; justify-content:center;
+  padding:clamp(12px,2vw,28px);
+  background:rgba(11,28,57,.20); backdrop-filter:blur(4px);
+}
+.student-flow-card {
+  width:min(475px,92%); max-height:92%; overflow:auto;
+  box-sizing:border-box; padding:22px clamp(16px,2vw,29px) 17px;
+  border-radius:18px; border:2px solid #9fc6f2;
+  background:linear-gradient(172deg,#fff,#eaf3ff);
+  box-shadow:0 18px 55px rgba(9,26,63,.36),0 0 0 4px rgba(255,255,255,.45);
+  text-align:center; color:#183e70;
+}
+.student-flow-header {display:flex;align-items:center;justify-content:center;gap:9px;
+  font-weight:900;font-size:clamp(15px,1.5vw,21px);letter-spacing:.04em;color:#1862ac;}
+.student-flow-header span {font-size:10px;color:#7893b0;}
+.student-flow-card h2 {margin:15px 0 4px;font-size:clamp(18px,2vw,25px);font-weight:900;}
+.student-flow-card p {margin:7px 0 16px;font-size:clamp(12px,1.05vw,14px);font-weight:600;color:#66809e;line-height:1.5;}
+.student-flow-button {width:100%;min-height:46px;padding:10px 15px;margin:6px 0;
+  display:flex;gap:10px;align-items:center;justify-content:center;cursor:pointer;
+  border:2px solid #aac6e3;border-radius:10px;background:linear-gradient(#fff,#dceafd);
+  color:#21568b;font-weight:900;letter-spacing:.035em;font-size:clamp(12px,1vw,15px);
+  box-shadow:0 3px 0 #91b1d3;}
+.student-flow-button.main {color:white;border-color:#69aff5;
+  background:linear-gradient(#398de8,#175ca9);box-shadow:0 3px 0 #134274;}
+.student-flow-button:hover {filter:brightness(1.07);}
+.student-flow-button:disabled {opacity:.65;cursor:wait;}
+.student-flow-form {display:flex;flex-direction:column;gap:11px;text-align:left;}
+.student-flow-form label {display:flex;flex-direction:column;gap:5px;
+  color:#496a92;font-size:12px;font-weight:900;letter-spacing:.025em;}
+.student-flow-form input {width:100%;box-sizing:border-box;border:1.5px solid #aecbe9;
+  border-radius:8px;background:#fff;padding:12px;color:#173b63;
+  outline:none;font-size:16px;font-weight:600;}
+.student-flow-form input:focus {border-color:#388bec;box-shadow:0 0 0 3px #d8eafd;}
+.student-id-line {display:flex;align-items:center;justify-content:space-between;
+  padding:9px 12px;background:#deedfb;border-radius:8px;letter-spacing:.09em;}
+.student-id-line button {border:0;background:transparent;color:#1a65ab;cursor:pointer;}
+.student-room-detail {display:grid;grid-template-columns:1fr 1fr;gap:11px;text-align:left;
+  background:#e9f3ff;padding:14px;border-radius:9px;font-size:13px;}
+.student-room-detail span {color:#5c799c;}
+.student-room-detail strong {overflow-wrap:anywhere;}
+.student-waiting-banner {margin:17px 0;padding:14px;border:2px dashed #78b3ef;border-radius:10px;
+  background:#e2f1ff;color:#1a659f;font-weight:900;letter-spacing:.04em;}
+.student-flow-error {color:#b63453!important;background:#ffeaf0;border-radius:7px;padding:9px;font-weight:700!important;}
+.student-flow-back {margin-top:13px;display:inline-flex;gap:6px;align-items:center;
+  border:0;background:transparent;cursor:pointer;color:#486b90;font-size:12px;font-weight:800;}
+.student-spin {margin:10px auto 0;animation:studentSpin 1s linear infinite;}
+@keyframes studentSpin {to{transform:rotate(360deg);}}
+@media(max-height:600px){.student-flow-card{padding:11px 18px;max-height:95%;}
+ .student-flow-card h2{margin:7px 0 2px}.student-flow-card p{margin:3px 0 7px;}
+ .student-flow-button{min-height:36px;padding:7px}.student-flow-form{gap:7px;}
+ .student-flow-form input{padding:8px}}

@@ -123,6 +123,7 @@ export const App: React.FC = () => {
         <StudentScreen
           onNavigate={setScreen}
           playerName={settings.playerName}
+          onPlayBot={() => handleStartBattle('easy')}
         />
       )}
 

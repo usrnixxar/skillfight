@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import confetti from 'canvas-confetti';
-import { Check, ArrowRight, Trophy, Skull, Pause, Play, Settings, LogOut, ArrowLeft } from 'lucide-react';
+import { Check, ArrowRight, Trophy, Skull, Pause, Play, Settings, LogOut, ArrowLeft, Keyboard } from 'lucide-react';
 import { TopLogo } from '../components/TopLogo';
 import { SideCharacters, CharacterActionState } from '../components/SideCharacters';
 import { BattleFxCanvas, LetterBullet } from '../components/BattleFxCanvas';
@@ -36,6 +36,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const [level, setLevel] = useState(1);
   const levelRef = useRef(1);
   const [completedAll, setCompletedAll] = useState(false);
+  const [mobileKeyboardGate, setMobileKeyboardGate] = useState(() => typeof window !== 'undefined' && (window.matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)));
+  const keyboardGateRef = useRef(typeof window !== 'undefined' && (window.matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)));
   const [pauseMenu, setPauseMenu] = useState<'menu' | 'settings' | null>(null);
   const pauseRef = useRef(false);
   const wasCountdownRef = useRef(false);
@@ -140,7 +142,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   };
 
   const fire = (from: 'player' | 'bot') => {
-    if (roundLocked.current || pauseRef.current) return;
+    if (roundLocked.current || pauseRef.current || keyboardGateRef.current) return;
     const shot: LetterBullet = {
       id: ++nextBulletId.current,
       from,
@@ -236,6 +238,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   };
 
   const runCountdown = () => {
+    if (keyboardGateRef.current) return;
     clearTimers();
     roundLocked.current = true;
     winningShotRef.current = null;
@@ -268,6 +271,22 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     }, 1000);
   };
 
+  // Mobile: gameplay stays locked until a physical-keyboard Shift+K chord.
+  // Browsers cannot reliably enumerate connected keyboards; this validates
+  // the shortcut rather than pretending to detect hardware connection.
+  useEffect(() => {
+    if (!keyboardGateRef.current) return;
+    const activate = (event: KeyboardEvent) => {
+      if (!keyboardGateRef.current || !event.shiftKey || event.code !== 'KeyK' || event.repeat) return;
+      event.preventDefault();
+      keyboardGateRef.current = false;
+      setMobileKeyboardGate(false);
+      runCountdown();
+    };
+    window.addEventListener('keydown', activate, true);
+    return () => window.removeEventListener('keydown', activate, true);
+  }, []);
+
   // Initialize once per mounted battle, preserving 3-2-1-GO countdown.
   useEffect(() => {
     runCountdown();
@@ -290,7 +309,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (stateRef.current.phase !== 'typing' || roundLocked.current || pauseRef.current) return;
+    if (stateRef.current.phase !== 'typing' || roundLocked.current || pauseRef.current || keyboardGateRef.current) return;
     const typed = e.target.value.toUpperCase();
     const target = playerWord.current;
     if (!target.startsWith(typed)) {
@@ -360,7 +379,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   };
 
   const openPause = () => {
-    if (pauseRef.current || stateRef.current.phase === 'finished' || stateRef.current.phase === 'hit') return;
+    if (keyboardGateRef.current || pauseRef.current || stateRef.current.phase === 'finished' || stateRef.current.phase === 'hit') return;
     soundManager.playClick();
     wasCountdownRef.current = stateRef.current.phase === 'countdown';
     pauseRef.current = true;
@@ -415,7 +434,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
   useEffect(() => {
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape' || keyboardGateRef.current) return;
       event.preventDefault();
       event.stopPropagation();
       if (pauseRef.current) {
@@ -520,7 +539,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       {impactCount > 0 && <div className={`impact-counter ${impactSide === 'bot' ? 'impact-right' : 'impact-left'}`} aria-live="off" key={impactCount}>✦</div>}
 
       {/* 3-SECOND PRE-MATCH COUNTDOWN OVERLAY */}
-      {state.phase === 'countdown' && (
+      {!mobileKeyboardGate && state.phase === 'countdown' && (
         <div className="countdown-overlay-modal">
           <div className="countdown-giant-number">
             {state.countdownValue === 0 ? 'GO!' : state.countdownValue}
@@ -540,7 +559,9 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
             id="type-input-field"
             value={state.playerInput}
             onChange={handleInputChange}
-            disabled={state.phase !== 'typing' || pauseMenu !== null}
+            inputMode={mobileKeyboardGate ? 'none' : undefined}
+            readOnly={mobileKeyboardGate}
+            disabled={state.phase !== 'typing' || pauseMenu !== null || mobileKeyboardGate}
             placeholder="Type here..."
             autoComplete="off"
             autoCorrect="off"
@@ -585,6 +606,19 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                 <button className="battle-pause-action exit" type="button" onClick={pauseExitHome}><LogOut size={18}/> EXIT TO HOME</button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {mobileKeyboardGate && (
+        <div className="mobile-keyboard-gate" role="dialog" aria-modal="true" aria-label="External keyboard required">
+          <div className="mobile-keyboard-panel">
+            <Keyboard size={44} strokeWidth={1.6} />
+            <h2>EXTERNAL KEYBOARD REQUIRED</h2>
+            <p>Connect a Bluetooth or USB keyboard to your phone to play SkillFight.</p>
+            <div className="mobile-keyboard-shortcut">Press <kbd>SHIFT</kbd> + <kbd>K</kbd> to start</div>
+            <small>The battle will stay stopped until you press the shortcut.</small>
+            <button type="button" onClick={() => onNavigate('modes')}>BACK TO MODES</button>
           </div>
         </div>
       )}

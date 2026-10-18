@@ -39,16 +39,17 @@ function Fighter({ side, state, shots }: {side: 'male2' | 'female2'; state: Char
     if (!raised.current) {
       raised.current = true;
       // A short raising sequence plays on the first correct letter.
-      [1,2,3,4,aimFrame,fireFrame,fireFrame + 1,aimFrame].forEach((f,i) => {
-        schedule(() => setFrame(f), i * 38);
-      });
+      [1,2,3,4,aimFrame].forEach((f,i) => schedule(() => setFrame(f), i * 42));
+      schedule(() => setFrame(fireFrame), 215);
+      schedule(() => setFrame(fireFrame + 1), 270);
+      schedule(() => setFrame(aimFrame), 325);
     } else {
       setFrame(fireFrame);
       schedule(() => setFrame(fireFrame + 1), 55);
       schedule(() => setFrame(aimFrame), 115);
     }
   }, [shots]);
-  return <img src={`/assets/characters/${side}/${frames[frame]}`} alt={side === 'male2' ? 'Blue gunfighter' : 'Pink gunfighter'} className="fighter-image" draggable={false} />;
+  return <img decoding="async" src={`/assets/characters/${side}/${frames[frame]}`} alt={side === 'male2' ? 'Blue gunfighter' : 'Pink gunfighter'} className="fighter-image" draggable={false} />;
 }
 
 export const SideCharacters: React.FC<Props> = ({ isBattle = false, leftState = 'idle', rightState = 'idle', playerShots = 0, botShots = 0 }) => (

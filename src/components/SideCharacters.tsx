@@ -24,6 +24,7 @@ const GunSprite = ({ side, state }: { side: 'p1' | 'p2'; state: CharacterActionS
       onError={() => setBroken(prev => prev.includes(requested) ? prev : [...prev, requested])}
       alt={side === 'p1' ? 'Blue gunfighter' : 'Pink gunfighter'}
       className="fighter-image"
+      style={side === "p2" && broken.includes(requested) ? { transform: "scaleX(-1)" } : undefined}
       draggable={false}
     />
   );

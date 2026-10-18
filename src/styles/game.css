@@ -1527,3 +1527,88 @@ body.reduced-motion * {
   .battle-pause-toggle span { display: none; }
   .battle-pause-panel { padding: 17px; }
 }
+
+
+/* Responsive SkillFight for touch phones with external keyboard. */
+.mobile-keyboard-gate {
+  position:absolute; inset:0; z-index:150;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(6,13,33,.88); backdrop-filter:blur(7px);
+  pointer-events:auto;
+}
+.mobile-keyboard-panel {
+  width:min(440px,86%); max-height:94%; overflow:auto;
+  padding:clamp(15px,2.6vw,28px);
+  border:2px solid #7ac6ff; border-radius:17px;
+  background:linear-gradient(145deg,#1f4571,#101b35);
+  color:#edf7ff; box-shadow:0 0 35px rgba(43,171,255,.36);
+  display:flex; flex-direction:column; align-items:center; gap:12px;
+  text-align:center;
+}
+.mobile-keyboard-panel h2 {font:900 clamp(16px,2vw,27px) var(--font-main);line-height:1.17;color:#fff;}
+.mobile-keyboard-panel p {font:600 clamp(12px,1.35vw,16px) var(--font-main);line-height:1.45;}
+.mobile-keyboard-shortcut {font-size:clamp(12px,1.55vw,18px);font-weight:900;}
+.mobile-keyboard-shortcut kbd {
+  display:inline-block; border:1px solid #a3deff; border-bottom-width:4px;
+  border-radius:6px; padding:6px 11px;
+  color:#fff; background:#235889;
+}
+.mobile-keyboard-panel small {color:#b8cee5;font-size:clamp(10px,1vw,13px);}
+.mobile-keyboard-panel button {
+  padding:10px 20px;border:1px solid #f0afbf;border-radius:10px;
+  background:#813653;color:#fff;font-weight:800;cursor:pointer;
+}
+@media (pointer:coarse) and (orientation:landscape), (max-width:920px) and (orientation:landscape) {
+  .game-viewport {width:100vw; height:100dvh; max-height:100dvh; max-width:100vw;}
+  .top-logo-container {margin-top:0.5vw;}
+  .top-logo-svg {width:18vw; min-width:0;}
+  .battle-center-top .top-logo-svg {min-width:0; width:13vw;}
+  .battle-hud-top {top:1%; padding-inline:1.4%;}
+  .hud-card-p1,.hud-card-p2 {max-width:38%; min-width:0;}
+  .hud-card-p1 .hud-info-col,.hud-card-p2 .hud-info-col {min-width:0;}
+  .hud-player-tag {font-size:clamp(8px,1.35vw,13px);}
+  .hud-kills-text {font-size:clamp(8px,1.15vw,12px);}
+  .hud-avatar-box {width:clamp(30px,6vw,65px); height:clamp(30px,6vw,65px);}
+  .health-bar-track {height:clamp(7px,1.3vw,12px);}
+  .bot-hud-word {padding:2px 5px;}
+  .bot-hud-word span {font-size:9px;}
+  .bot-hud-word strong {font-size:11px;}
+  .battle-pause-toggle {left:29%; top:1.5%; padding:5px 6px;}
+  .center-word-card {top:22%; width:34%; padding:1.2%;}
+  .dual-word-card .word-card-target {font-size:clamp(20px,4vw,38px);}
+  .screen-wrapper .side-fighter-left,.screen-wrapper .side-fighter-right {height:50%; bottom:13%; width:26%;}
+  .screen-wrapper .side-fighter-left {left:2%;}
+  .screen-wrapper .side-fighter-right {right:2%;}
+  .battle-bottom-bar {bottom:2%;}
+  .typing-input-field {font-size:clamp(14px,2.4vw,22px);}
+  .typing-box-p1,.typing-box-p2 {min-width:0;}
+  .bottom-kill-target {font-size:clamp(9px,1.3vw,13px);}
+  .mode-select-container {width:52vw;min-width:0;max-height:76%;overflow:auto;gap:.65vw;}
+  .mode-card {padding:.75vw 1.25vw;min-height:0;}
+  .mode-text-title {font-size:clamp(12px,1.9vw,21px);}
+  .mode-text-desc {font-size:clamp(9px,1.2vw,14px);}
+  .diff-btn {font-size:clamp(10px,1.45vw,16px);}
+  .home-menu-center {width:29vw; min-width:0;gap:1vw;}
+  .btn-play-master {font-size:2.25vw;padding:1vw 2vw;}
+  .btn-slate-menu {font-size:1.7vw;}
+  .popup-modal-panel {min-width:0;width:min(390px,60%);padding:15px;}
+  .popup-title {font-size:clamp(17px,2.5vw,28px);}
+  .popup-subtitle {font-size:clamp(11px,1.45vw,14px);}
+  .btn-popup-primary,.btn-popup-secondary {font-size:clamp(11px,1.5vw,15px);}
+}
+/* In portrait, retain the full 16:9 arena by rotating the game viewport
+   instead of shrinking battle text to unreadable vertical-phone dimensions. */
+@media (pointer:coarse) and (orientation:portrait) {
+  #root {position:relative;width:100vw;height:100dvh;overflow:hidden;}
+  .game-viewport {
+    position:absolute;top:50%;left:50%;margin:0;
+    width:100dvh;height:100vw;max-width:none;max-height:none;
+    transform:translate(-50%,-50%) rotate(90deg);
+    transform-origin:center;
+  }
+  .mobile-keyboard-panel {max-height:90%; width:65%;padding:12px;gap:7px;}
+  .mobile-keyboard-panel h2 {font-size:clamp(13px,2.5vw,21px);}
+  .mobile-keyboard-panel p {font-size:clamp(10px,1.6vw,14px);}
+  .mobile-keyboard-shortcut {font-size:clamp(10px,1.8vw,16px);}
+  .mobile-keyboard-panel small {font-size:10px;}
+}

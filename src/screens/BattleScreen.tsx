@@ -27,13 +27,13 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   reducedMotion = false
 }) => {
   const diffConfig = DIFFICULTY_CONFIGS[difficulty];
+  const LEVEL_WPM = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65];
+  const [level, setLevel] = useState(1);
+  const levelRef = useRef(1);
+  const [completedAll, setCompletedAll] = useState(false);
 
-  // Pick random initial bot WPM within difficulty range
-  const pickBotWpm = useCallback(() => {
-    return Math.floor(
-      diffConfig.minWpm + Math.random() * (diffConfig.maxWpm - diffConfig.minWpm + 1)
-    );
-  }, [diffConfig]);
+  // 10 fixed levels: every cleared health battle increases opponent WPM.
+  const pickBotWpm = useCallback(() => LEVEL_WPM[levelRef.current - 1], []);
 
   const [state, setState] = useState<BattleState>(() => {
     const firstWord = getRandomWord(difficulty);
@@ -46,7 +46,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       currentWord: firstWord,
       playerInput: '',
       botInput: '',
-      botWpm: Math.floor(diffConfig.minWpm + (diffConfig.maxWpm - diffConfig.minWpm) / 2),
+      botWpm: LEVEL_WPM[0],
       botProgress: 0,
       phase: 'countdown',
       countdownValue: 3,
@@ -153,6 +153,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       soundManager.playImpact(winner === 'player');
     }, 250);
     later(() => {
+      setCompletedAll(winner === 'player' && levelRef.current === 10);
       setState(prev => ({ ...prev, phase: 'finished' }));
       setLeftPose(winner === 'player' ? 'victory' : 'defeat');
       setRightPose(winner === 'bot' ? 'victory' : 'defeat');
@@ -279,6 +280,11 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
   const handlePlayAgain = () => {
     soundManager.playClick();
+    // A win unlocks the next level. A loss retries the current level.
+    const nextLevel = stateRef.current.matchWinner === 'player' ? Math.min(10, levelRef.current + 1) : levelRef.current;
+    levelRef.current = nextLevel;
+    setLevel(nextLevel);
+    setCompletedAll(false);
     clearTimers();
     setBullets([]);
     setRoundBanner(null);
@@ -293,7 +299,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     const word = getRandomWord(difficulty);
     setState({
       round: 1, playerKills: 0, botKills: 0, playerHp: 100, botHp: 100, currentWord: word,
-      playerInput: '', botInput: '', botWpm: pickBotWpm(),
+      playerInput: '', botInput: '', botWpm: LEVEL_WPM[nextLevel - 1],
       botProgress: 0, phase: 'countdown', countdownValue: 3,
       roundWinner: null, matchWinner: null, shakeActive: false,
       bulletActive: false, bulletDirection: 'player-to-bot',
@@ -363,7 +369,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         <div className="battle-center-top">
           <TopLogo className="battle-logo-mini" mini={true} />
           <div className="battle-round-badge">
-            ROUND {state.round}
+            LEVEL {level} / 10 · WORD {state.round}
           </div>
         </div>
 
@@ -450,8 +456,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         <div className="popup-modal-backdrop">
           <div className="popup-modal-panel">
             <Trophy size={54} color="#f5b838" style={{ margin: 'auto' }} />
-            <h2 className="popup-title">YOU WIN!</h2>
-            <p className="popup-subtitle">Opponent health reached 0 HP!</p>
+            <h2 className="popup-title">{completedAll ? 'ALL 10 LEVELS CLEARED!' : `LEVEL ${level} CLEARED!`}</h2>
+            <p className="popup-subtitle">{completedAll ? 'You are the SkillFight Champion!' : `Next Level ${level + 1}: Bot speed ${LEVEL_WPM[level]} WPM`}</p>
             <div className="popup-btn-row">
               <button
                 id="btn-victory-play-again"
@@ -459,7 +465,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                 onClick={handlePlayAgain}
                 onMouseEnter={() => soundManager.playHover()}
               >
-                PLAY AGAIN
+                {completedAll ? 'PLAY LEVEL 10 AGAIN' : 'NEXT LEVEL'}
               </button>
               <button
                 id="btn-victory-exit"
@@ -480,7 +486,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
           <div className="popup-modal-panel defeat">
             <Skull size={54} color="#ea5e92" style={{ margin: 'auto' }} />
             <h2 className="popup-title">YOU LOST!</h2>
-            <p className="popup-subtitle">The opponent won this match. Try again!</p>
+            <p className="popup-subtitle">Level {level} · {LEVEL_WPM[level - 1]} WPM — retry this level.</p>
             <div className="popup-btn-row">
               <button
                 id="btn-defeat-try-again"
@@ -488,7 +494,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                 onClick={handlePlayAgain}
                 onMouseEnter={() => soundManager.playHover()}
               >
-                TRY AGAIN
+                RETRY LEVEL
               </button>
               <button
                 id="btn-defeat-exit"

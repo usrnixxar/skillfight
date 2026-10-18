@@ -163,7 +163,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     pose(from, 'fire', 105);
     // Each bullet registers its own visual impact, without awarding duplicate kills.
     // Scoring is resolved by first word completion, preventing duplicate wins.
-    later(() => setBullets(prev => prev.filter(b => b.id !== shot.id)), 480);
+    later(() => setBullets(prev => prev.filter(b => b.id !== shot.id)), 780);
     if (healthRef.current[victim] === 0) finishRound(from);
   };
 

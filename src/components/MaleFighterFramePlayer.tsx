@@ -1,9 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   MALE_ATTACK_CONFIG,
   MALE_ATTACK_EVENTS,
-  FrameEvent,
-  getMaleAttackFramePath
+  FrameEvent
 } from '../game/maleFighterConfig';
 import { framePreloader } from '../game/framePreloader';
 
@@ -23,112 +22,78 @@ export const MaleFighterFramePlayer: React.FC<MaleFighterFramePlayerProps> = ({
   energyGlow = false
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const animFrameIdRef = useRef<number | null>(null);
-  const firedEventsRef = useRef<Set<number>>(new Set());
-  const [currentFrameNum, setCurrentFrameNum] = useState<number>(1);
+  const rafRef = useRef<number | null>(null);
+  // Keep callbacks current without restarting the active animation each render.
+  const eventCallbackRef = useRef(onFrameEvent);
+  const completeCallbackRef = useRef(onComplete);
+  eventCallbackRef.current = onFrameEvent;
+  completeCallbackRef.current = onComplete;
 
-  // When isPlaying changes to true, run the 48 FPS frame playback
   useEffect(() => {
-    if (!isPlaying) {
-      if (animFrameIdRef.current) {
-        cancelAnimationFrame(animFrameIdRef.current);
-        animFrameIdRef.current = null;
-      }
-      firedEventsRef.current.clear();
-      setCurrentFrameNum(1);
-      return;
-    }
+    if (!isPlaying) return;
 
-    firedEventsRef.current.clear();
-    const startTime = performance.now();
-    const frameDuration = MALE_ATTACK_CONFIG.frameDuration; // 1000 / 48 = 20.833ms
-    const totalFrames = MALE_ATTACK_CONFIG.totalFrames; // 240
+    let cancelled = false;
+    const firedEvents = new Set<number>();
+    let lastDrawnFrame = 0;
 
-    const renderLoop = (now: number) => {
-      const elapsed = now - startTime;
-      const targetFrame = Math.min(totalFrames, 1 + Math.floor(elapsed / frameDuration));
-      setCurrentFrameNum(targetFrame);
+    const run = async () => {
+      // Never start the animation clock until its frames are preloaded.
+      await framePreloader.preloadAll();
+      if (cancelled) return;
 
-      // 1. Dispatch any frame events that should have fired by this frame
-      for (const ev of MALE_ATTACK_EVENTS) {
-        if (ev.frame <= targetFrame && !firedEventsRef.current.has(ev.frame)) {
-          firedEventsRef.current.add(ev.frame);
-          if (onFrameEvent) {
-            onFrameEvent(ev);
-          }
-        }
-      }
+      const startTime = performance.now();
+      const render = (now: number) => {
+        if (cancelled) return;
+        const elapsed = now - startTime;
+        const target = Math.min(
+          MALE_ATTACK_CONFIG.totalFrames,
+          1 + Math.floor(elapsed / MALE_ATTACK_CONFIG.frameDuration)
+        );
 
-      // 2. Draw current frame on canvas
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const preloadedImg = framePreloader.getFrame(targetFrame);
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+        const img = framePreloader.getFrame(target);
+        if (ctx && canvas && img?.complete && img.naturalWidth > 0 && target !== lastDrawnFrame) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
-          if (preloadedImg && preloadedImg.complete && preloadedImg.naturalWidth > 0) {
-            ctx.drawImage(preloadedImg, 0, 0, canvas.width, canvas.height);
-          } else {
-            // If frame hasn't cached yet, draw via image element
-            const img = new Image();
-            img.src = getMaleAttackFramePath(targetFrame);
-            img.onload = () => {
-              if (canvasRef.current) {
-                const c = canvasRef.current.getContext('2d');
-                c?.clearRect(0, 0, canvas.width, canvas.height);
-                c?.drawImage(img, 0, 0, canvas.width, canvas.height);
-              }
-            };
-          }
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          lastDrawnFrame = target;
         }
-      }
-
-      // 3. Check completion
-      if (targetFrame >= totalFrames || elapsed >= MALE_ATTACK_CONFIG.totalDuration) {
-        // Ensure final events fire
+        // Missing frames retain the last valid picture; never schedule stale onload draws.
+        // Dispatch gameplay events once, in sequence, from the same animation clock.
         for (const ev of MALE_ATTACK_EVENTS) {
-          if (!firedEventsRef.current.has(ev.frame)) {
-            firedEventsRef.current.add(ev.frame);
-            if (onFrameEvent) onFrameEvent(ev);
+          if (ev.event === 'ATTACK_COMPLETE') continue;
+          if (ev.frame <= target && !firedEvents.has(ev.frame)) {
+            firedEvents.add(ev.frame);
+            eventCallbackRef.current?.(ev);
           }
         }
 
-        if (onComplete) {
-          onComplete();
+        if (target >= MALE_ATTACK_CONFIG.totalFrames) {
+          // A single completion path avoids duplicate next-round/victory transitions.
+          completeCallbackRef.current?.();
+          return;
         }
-        return;
-      }
-
-      animFrameIdRef.current = requestAnimationFrame(renderLoop);
+        rafRef.current = requestAnimationFrame(render);
+      };
+      rafRef.current = requestAnimationFrame(render);
     };
-
-    animFrameIdRef.current = requestAnimationFrame(renderLoop);
+    void run();
 
     return () => {
-      if (animFrameIdRef.current) {
-        cancelAnimationFrame(animFrameIdRef.current);
-        animFrameIdRef.current = null;
+      cancelled = true;
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
       }
-      firedEventsRef.current.clear();
     };
-  }, [isPlaying, onFrameEvent, onComplete]);
+  }, [isPlaying]);
 
   return (
     <div className={`male-frame-player-wrapper ${energyGlow ? 'energy-peak' : ''}`}>
       {isPlaying ? (
-        <canvas
-          ref={canvasRef}
-          width={432}
-          height={768}
-          className="fighter-canvas-frame"
-        />
+        <canvas ref={canvasRef} width={432} height={768} className="fighter-canvas-frame" />
       ) : (
-        <img
-          src={fallbackSprite}
-          alt="Blue Male Fighter"
-          className="fighter-image"
-          draggable={false}
-        />
+        <img src={fallbackSprite} alt="Blue Male Fighter" className="fighter-image" draggable={false} />
       )}
     </div>
   );

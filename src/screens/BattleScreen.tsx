@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import confetti from 'canvas-confetti';
-import { Heart, Check, ArrowRight, Trophy, Skull } from 'lucide-react';
+import { Check, ArrowRight, Trophy, Skull } from 'lucide-react';
 import { TopLogo } from '../components/TopLogo';
 import { SideCharacters, CharacterActionState } from '../components/SideCharacters';
 import { BattleFxCanvas, LetterBullet } from '../components/BattleFxCanvas';
@@ -41,6 +41,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       round: 1,
       playerKills: 0,
       botKills: 0,
+      playerHp: 100,
+      botHp: 100,
       currentWord: firstWord,
       playerInput: '',
       botInput: '',
@@ -76,6 +78,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const [impactSide, setImpactSide] = useState<'player' | 'bot' | null>(null);
   const [roundBanner, setRoundBanner] = useState<'player' | 'bot' | null>(null);
   const nextBulletId = useRef(0);
+  const healthRef = useRef({player: 100, bot: 100});
   const botTimeoutRef = useRef<number | null>(null);
   const countdownRef = useRef<number | null>(null);
   const timersRef = useRef<number[]>([]);
@@ -121,6 +124,11 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       from,
       createdAt: performance.now()
     };
+    // One valid letter = one point of damage, independent of projectile duration.
+    const victim = from === 'player' ? 'bot' : 'player';
+    healthRef.current[victim] = Math.max(0, healthRef.current[victim] - 1);
+    const health = { ...healthRef.current };
+    setState(prev => ({ ...prev, playerHp: health.player, botHp: health.bot }));
     setBullets(prev => [...prev, shot]);
     setShotCounts(prev => ({ ...prev, [from]: prev[from] + 1 }));
     soundManager.playGunFireSound();
@@ -128,6 +136,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     // Each bullet registers its own visual impact, without awarding duplicate kills.
     // Scoring is resolved by first word completion, preventing duplicate wins.
     later(() => setBullets(prev => prev.filter(b => b.id !== shot.id)), 480);
+    if (healthRef.current[victim] === 0) finishRound(from);
   };
 
   const finishRound = (winner: 'player' | 'bot') => {
@@ -135,52 +144,47 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     winningShotRef.current = winner;
     roundLocked.current = true;
     if (botTimeoutRef.current !== null) clearTimeout(botTimeoutRef.current);
-    const playerWon = winner === 'player';
     setRoundBanner(winner);
     if (!reducedMotion) setState(prev => ({ ...prev, shakeActive: true }));
     later(() => setState(prev => ({ ...prev, shakeActive: false })), 330);
+    setState(prev => ({ ...prev, phase: 'hit', roundWinner: winner, matchWinner: winner }));
+    later(() => {
+      pose(winner === 'player' ? 'bot' : 'player', 'hit');
+      soundManager.playImpact(winner === 'player');
+    }, 250);
+    later(() => {
+      setState(prev => ({ ...prev, phase: 'finished' }));
+      setLeftPose(winner === 'player' ? 'victory' : 'defeat');
+      setRightPose(winner === 'bot' ? 'victory' : 'defeat');
+      if (winner === 'player') {
+        soundManager.playVictory();
+        confetti({ particleCount: 130, spread: 90, origin: { y: 0.6 } });
+      } else soundManager.playDefeat();
+    }, 720);
+  };
+
+  // Word finishes do not end the fight. Both fighters get the next word.
+  const nextWordRound = () => {
+    if (roundLocked.current || winningShotRef.current) return;
+    roundLocked.current = true;
+    if (botTimeoutRef.current !== null) clearTimeout(botTimeoutRef.current);
+    const nextWord = getRandomWord(difficulty, stateRef.current.currentWord);
+    const nextWpm = pickBotWpm();
+    lastPlayerInput.current = '';
+    setLeftPose('idle');
+    setRightPose('idle');
+    setInputError(false);
     setState(prev => ({
-      ...prev,
-      phase: 'hit',
-      roundWinner: winner,
-      playerKills: prev.playerKills + (playerWon ? 1 : 0),
-      botKills: prev.botKills + (playerWon ? 0 : 1),
-      matchWinner: (playerWon ? prev.playerKills : prev.botKills) + 1 >= 3 ? winner : null
+      ...prev, round: prev.round + 1, currentWord: nextWord,
+      botWpm: nextWpm, playerInput: '', botInput: '',
+      botProgress: 0, phase: 'typing', roundWinner: null
     }));
-    // Let the last fired shot arrive before ending the round.
     later(() => {
-      pose(playerWon ? 'bot' : 'player', 'hit');
-      soundManager.playImpact(playerWon);
-    }, 220);
-    later(() => {
-      const cur = stateRef.current;
-      if (cur.matchWinner) {
-        setState(prev => ({ ...prev, phase: 'finished' }));
-        setLeftPose(cur.matchWinner === 'player' ? 'victory' : 'defeat');
-        setRightPose(cur.matchWinner === 'bot' ? 'victory' : 'defeat');
-        if (cur.matchWinner === 'player') {
-          soundManager.playVictory();
-          confetti({ particleCount: 130, spread: 90, origin: { y: 0.6 } });
-        } else soundManager.playDefeat();
-        return;
-      }
-      const nextWord = getRandomWord(difficulty, cur.currentWord);
-      const nextWpm = pickBotWpm();
-      winningShotRef.current = null;
-      setRoundBanner(null);
-      lastPlayerInput.current = '';
-      setLeftPose('idle');
-      setRightPose('idle');
-      setInputError(false);
+      if (winningShotRef.current) return;
       roundLocked.current = false;
-      setState(prev => ({
-        ...prev, round: prev.round + 1, currentWord: nextWord,
-        botWpm: nextWpm, playerInput: '', botInput: '',
-        botProgress: 0, phase: 'typing', roundWinner: null
-      }));
-      later(() => inputRef.current?.focus(), 30);
+      inputRef.current?.focus();
       startBotTyping(nextWord, nextWpm);
-    }, 650);
+    }, 320);
   };
 
   const startBotTyping = (word: string, wpm: number) => {
@@ -193,7 +197,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       setState(prev => ({ ...prev, botInput: word.slice(0, count), botProgress: count }));
       fire('bot');
       if (count >= word.length) {
-        finishRound('bot');
+        if (healthRef.current.player > 0) nextWordRound();
         return;
       }
       botTimeoutRef.current = window.setTimeout(tick, delay * (0.85 + Math.random() * 0.3));
@@ -269,7 +273,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     setState(prev => ({ ...prev, playerInput: typed }));
     if (typed.length > previous.length) {
       for (let i = previous.length; i < typed.length; i++) fire('player');
-      if (typed === target) finishRound('player');
+      if (typed === target && healthRef.current.bot > 0) nextWordRound();
     }
   };
 
@@ -281,13 +285,14 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     setImpactCount(0);
     setImpactSide(null);
     setShotCounts({ player: 0, bot: 0 });
+    healthRef.current = { player: 100, bot: 100 };
     setInputError(false);
     lastPlayerInput.current = '';
     winningShotRef.current = null;
     roundLocked.current = true;
     const word = getRandomWord(difficulty);
     setState({
-      round: 1, playerKills: 0, botKills: 0, currentWord: word,
+      round: 1, playerKills: 0, botKills: 0, playerHp: 100, botHp: 100, currentWord: word,
       playerInput: '', botInput: '', botWpm: pickBotWpm(),
       botProgress: 0, phase: 'countdown', countdownValue: 3,
       roundWinner: null, matchWinner: null, shakeActive: false,
@@ -326,11 +331,6 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     return () => window.removeEventListener('keydown', onSpacePlayAgain);
   }, []);
 
-  // 3 Hearts for each side:
-  // Player has 3 hearts, loses 1 each time bot gets a kill (heartsLeft = 3 - botKills)
-  // Bot has 3 hearts, loses 1 each time player gets a kill (heartsLeft = 3 - playerKills)
-  const playerHeartsLeft = Math.max(0, 3 - state.botKills);
-  const botHeartsLeft = Math.max(0, 3 - state.playerKills);
 
   return (
     <div
@@ -353,18 +353,9 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
           <div className="hud-info-col">
             <div className="hud-name-hearts">
               <span className="hud-player-tag">{playerName || 'P1'}</span>
-              <div className="hud-hearts-row">
-                {[1, 2, 3].map(h => (
-                  <Heart
-                    key={h}
-                    className={`heart-icon ${h <= playerHeartsLeft ? 'heart-full' : 'heart-empty'}`}
-                  />
-                ))}
-              </div>
+              
             </div>
-            <div className="hud-kills-text">
-              KILLS: <strong style={{ color: '#ffffff' }}>{state.playerKills}</strong>
-            </div>
+            <div className="hud-kills-text">HP: <strong style={{ color: '#ffffff' }}>{state.playerHp} / 100</strong></div><div className="health-bar-track"><div className="health-bar-fill" style={{width: `${state.playerHp}%`}} /></div>
           </div>
         </div>
 
@@ -380,19 +371,10 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         <div className="hud-card-p2">
           <div className="hud-info-col">
             <div className="hud-name-hearts" style={{ justifyContent: 'flex-end' }}>
-              <div className="hud-hearts-row">
-                {[1, 2, 3].map(h => (
-                  <Heart
-                    key={h}
-                    className={`heart-icon ${h <= botHeartsLeft ? 'heart-full' : 'heart-empty'}`}
-                  />
-                ))}
-              </div>
+              
               <span className="hud-player-tag">{diffConfig.name} BOT</span>
             </div>
-            <div className="hud-kills-text">
-              KILLS: <strong style={{ color: '#ffffff' }}>{state.botKills}</strong>
-            </div>
+            <div className="hud-kills-text">HP: <strong style={{ color: '#ffffff' }}>{state.botHp} / 100</strong></div><div className="health-bar-track"><div className="health-bar-fill" style={{width: `${state.botHp}%`}} /></div>
           </div>
           <div className="hud-avatar-box">
             <img
@@ -460,7 +442,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
       {/* BOTTOM CENTER KILL TARGET */}
       <div className="bottom-kill-target">
-        FIRST TO 3 KILLS WINS
+        EACH CORRECT LETTER = 1 HP DAMAGE
       </div>
 
       {/* VICTORY POPUP MODAL */}
@@ -469,7 +451,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
           <div className="popup-modal-panel">
             <Trophy size={54} color="#f5b838" style={{ margin: 'auto' }} />
             <h2 className="popup-title">YOU WIN!</h2>
-            <p className="popup-subtitle">You won the battle with 3 kills!</p>
+            <p className="popup-subtitle">Opponent health reached 0 HP!</p>
             <div className="popup-btn-row">
               <button
                 id="btn-victory-play-again"

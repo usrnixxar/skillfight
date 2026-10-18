@@ -1319,3 +1319,8 @@ body.reduced-motion * {
 @media (max-width: 800px) {
   .screen-wrapper .side-fighter-left, .screen-wrapper .side-fighter-right { height: 53%; width: 34%; bottom: 15%; }
 }
+
+
+.impact-counter { top: 54%; left: 18%; }
+.impact-counter.impact-right { left: 80%; color: #8bdfff; }
+.impact-counter.impact-left { left: 18%; color: #ff9ac5; }

@@ -42,14 +42,15 @@ export const BattleFxCanvas: React.FC<BattleFxCanvasProps> = ({ bullets, onImpac
       const w = canvas.width;
       const h = canvas.height;
       ctx.clearRect(0, 0, w, h);
-      const duration = 220;
+      const duration = 300;
       const visible = bulletsRef.current;
       for (const shot of visible) {
         const progress = Math.max(0, Math.min(1, (now - shot.createdAt) / duration));
         const player = shot.from === 'player';
-        const x0 = w * (player ? 0.32 : 0.68);
-        const x1 = w * (player ? 0.72 : 0.28);
-        const y = h * 0.51;
+        // Gun muzzle and opponent center, matched to the compact battle sprites.
+        const x0 = w * (player ? 0.235 : 0.765);
+        const x1 = w * (player ? 0.82 : 0.18);
+        const y = h * 0.565;
         const x = x0 + (x1 - x0) * progress;
         const color = player ? '#48bfff' : '#ff70b5';
 

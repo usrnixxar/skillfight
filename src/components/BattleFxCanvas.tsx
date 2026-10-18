@@ -30,41 +30,44 @@ export const BattleFxCanvas: React.FC<BattleFxCanvasProps> = ({ bullets, onImpac
     let ratio = 1;
 
     const resize = () => {
-      const box = canvas.getBoundingClientRect();
+      // clientWidth/clientHeight stay in the arena's unrotated CSS coordinates.
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
       ratio = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.max(1, Math.round(box.width * ratio));
-      canvas.height = Math.max(1, Math.round(box.height * ratio));
+      canvas.width = Math.max(1, Math.round(w * ratio));
+      canvas.height = Math.max(1, Math.round(h * ratio));
     };
 
-    // All coordinates are relative to the battle canvas, not guessed screen widths.
-    // object-fit:contain means transparent sprite image must be measured within its box.
+    // Position objects entirely in arena-local coordinates. getBoundingClientRect()
+    // is screen-space and swaps axes on phones with the 90-degree arena rotation.
     const pointOnFighter = (side: 'male2' | 'female2', xRatio: number, yRatio: number): Point | null => {
       const el = document.getElementById('fighter-sprite-' + side) as HTMLImageElement | null;
-      if (!el) return null;
-      const outer = el.getBoundingClientRect();
-      const arena = canvas.getBoundingClientRect();
+      const holder = el?.parentElement as HTMLElement | null;
+      if (!el || !holder) return null;
       const naturalW = el.naturalWidth || (side === 'male2' ? 1024 : 720);
       const naturalH = el.naturalHeight || (side === 'male2' ? 1536 : 1280);
-      const scale = Math.min(outer.width / naturalW, outer.height / naturalH);
-      const drawW = naturalW * scale;
-      const drawH = naturalH * scale;
-      const left = outer.left + (outer.width - drawW) / 2;
-      const top = outer.top + (outer.height - drawH); // object-position: center bottom
-      return { x: left - arena.left + drawW * xRatio, y: top - arena.top + drawH * yRatio };
+      const scale = Math.min(el.clientWidth / naturalW, el.clientHeight / naturalH);
+      if (!isFinite(scale) || scale <= 0) return null;
+      const drawnWidth = naturalW * scale;
+      const drawnHeight = naturalH * scale;
+      const left = holder.offsetLeft + el.offsetLeft + (el.clientWidth - drawnWidth) / 2;
+      const top = holder.offsetTop + el.offsetTop + el.clientHeight - drawnHeight;
+      return { x: left + drawnWidth * xRatio, y: top + drawnHeight * yRatio };
     };
 
     const getPath = (shot: LetterBullet) => {
       const male = shot.from === 'player';
-      const rect = canvas.getBoundingClientRect();
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
       const start = male
-        ? pointOnFighter('male2', 0.92, 0.27)
-        : pointOnFighter('female2', 0.18, 0.31);
+        ? pointOnFighter('male2', 0.91, 0.31)
+        : pointOnFighter('female2', 0.12, 0.35);
       const end = male
-        ? pointOnFighter('female2', 0.49, 0.46)
-        : pointOnFighter('male2', 0.53, 0.43);
+        ? pointOnFighter('female2', 0.52, 0.46)
+        : pointOnFighter('male2', 0.52, 0.46);
       return {
-        start: start || { x: rect.width * (male ? .25 : .75), y: rect.height * .49 },
-        end: end || { x: rect.width * (male ? .77 : .23), y: rect.height * .53 }
+        start: start || { x: w * (male ? .24 : .76), y: h * .52 },
+        end: end || { x: w * (male ? .78 : .22), y: h * .5 }
       };
     };
 
@@ -137,9 +140,11 @@ export const BattleFxCanvas: React.FC<BattleFxCanvasProps> = ({ bullets, onImpac
       raf = requestAnimationFrame(render);
     };
     resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas);
     window.addEventListener('resize', resize);
     raf = requestAnimationFrame(render);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); };
+    return () => { cancelAnimationFrame(raf); observer.disconnect(); window.removeEventListener('resize', resize); };
   }, []);
 
   return <canvas ref={canvasRef} className="battle-canvas-fx" />;

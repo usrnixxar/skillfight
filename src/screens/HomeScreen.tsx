@@ -1,7 +1,6 @@
 import React from 'react';
 import { Settings, Power } from 'lucide-react';
 import { TopLogo } from '../components/TopLogo';
-import { SideCharacters } from '../components/SideCharacters';
 import { soundManager } from '../audio/soundManager';
 import { GameScreen } from '../types/game';
 
@@ -24,7 +23,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
       <TopLogo />
 
       {/* Persistent Animated Side Characters */}
-      <SideCharacters leftState="idle" rightState="idle" />
+      {/* Background video contains both animated fighters. */}
 
       {/* Center 3 Action Buttons */}
       <div className="home-menu-center">

@@ -72,6 +72,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   // Independent shots are driven by each correctly entered letter.
   const [bullets, setBullets] = useState<LetterBullet[]>([]);
   const [shotCounts, setShotCounts] = useState({ player: 0, bot: 0 });
+  const [impactCount, setImpactCount] = useState(0);
+  const [roundBanner, setRoundBanner] = useState<'player' | 'bot' | null>(null);
   const nextBulletId = useRef(0);
   const botTimeoutRef = useRef<number | null>(null);
   const countdownRef = useRef<number | null>(null);
@@ -122,9 +124,9 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     setShotCounts(prev => ({ ...prev, [from]: prev[from] + 1 }));
     soundManager.playGunFireSound();
     pose(from, 'fire', 105);
-    // Keep a shot visible through impact; only visual impact occurs here.
+    // Each bullet registers its own visual impact, without awarding duplicate kills.
     // Scoring is resolved by first word completion, preventing duplicate wins.
-    later(() => setBullets(prev => prev.filter(b => b.id !== shot.id)), 430);
+    later(() => setBullets(prev => prev.filter(b => b.id !== shot.id)), 480);
   };
 
   const finishRound = (winner: 'player' | 'bot') => {
@@ -133,6 +135,9 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     roundLocked.current = true;
     if (botTimeoutRef.current !== null) clearTimeout(botTimeoutRef.current);
     const playerWon = winner === 'player';
+    setRoundBanner(winner);
+    if (!reducedMotion) setState(prev => ({ ...prev, shakeActive: true }));
+    later(() => setState(prev => ({ ...prev, shakeActive: false })), 330);
     setState(prev => ({
       ...prev,
       phase: 'hit',
@@ -161,6 +166,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       const nextWord = getRandomWord(difficulty, cur.currentWord);
       const nextWpm = pickBotWpm();
       winningShotRef.current = null;
+      setRoundBanner(null);
       lastPlayerInput.current = '';
       setLeftPose('idle');
       setRightPose('idle');
@@ -270,6 +276,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     soundManager.playClick();
     clearTimers();
     setBullets([]);
+    setRoundBanner(null);
+    setImpactCount(0);
     setShotCounts({ player: 0, bot: 0 });
     setInputError(false);
     lastPlayerInput.current = '';
@@ -286,6 +294,11 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     });
     // Countdown starts on the next tick after the fresh match state commits.
     later(runCountdown, 20);
+  };
+
+  const handleBulletImpact = (_shot: LetterBullet) => {
+    setImpactCount(n => n + 1);
+    // Impact is a visual feedback event per letter; the first word finisher wins the round.
   };
 
   const handleExitMatch = () => {
@@ -380,7 +393,9 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
       {/* Both gunfighters fire independently on every correct letter. */}
       <SideCharacters isBattle leftState={leftPose} rightState={rightPose} playerShots={shotCounts.player} botShots={shotCounts.bot} />
-      <BattleFxCanvas bullets={bullets} />
+      <BattleFxCanvas bullets={bullets} onImpact={handleBulletImpact} />
+      {roundBanner && <div className={`round-impact-banner ${roundBanner === 'player' ? 'round-blue' : 'round-pink'}`} key={`${state.round}-${roundBanner}`}>{roundBanner === 'player' ? 'DIRECT HIT!' : 'OPPONENT HIT!'}</div>}
+      <div className="impact-counter" aria-live="off" key={impactCount}>{impactCount > 0 ? '✦' : ''}</div>
 
       {/* 3-SECOND PRE-MATCH COUNTDOWN OVERLAY */}
       {state.phase === 'countdown' && (

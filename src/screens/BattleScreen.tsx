@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import confetti from 'canvas-confetti';
-import { Check, ArrowRight, Trophy, Skull } from 'lucide-react';
+import { Check, ArrowRight, Trophy, Skull, Pause, Play, Settings, LogOut, ArrowLeft } from 'lucide-react';
 import { TopLogo } from '../components/TopLogo';
 import { SideCharacters, CharacterActionState } from '../components/SideCharacters';
 import { BattleFxCanvas, LetterBullet } from '../components/BattleFxCanvas';
@@ -10,7 +10,8 @@ import {
   BotDifficulty,
   DIFFICULTY_CONFIGS,
   GameScreen,
-  BattleState
+  BattleState,
+  GameSettings
 } from '../types/game';
 
 interface BattleScreenProps {
@@ -18,19 +19,26 @@ interface BattleScreenProps {
   playerName: string;
   onNavigate: (screen: GameScreen) => void;
   reducedMotion?: boolean;
+  audioSettings: GameSettings;
+  onUpdateAudioSettings: (settings: GameSettings) => void;
 }
 
 export const BattleScreen: React.FC<BattleScreenProps> = ({
   difficulty,
   playerName,
   onNavigate,
-  reducedMotion = false
+  reducedMotion = false,
+  audioSettings,
+  onUpdateAudioSettings
 }) => {
   const diffConfig = DIFFICULTY_CONFIGS[difficulty];
   const LEVEL_WPM = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65];
   const [level, setLevel] = useState(1);
   const levelRef = useRef(1);
   const [completedAll, setCompletedAll] = useState(false);
+  const [pauseMenu, setPauseMenu] = useState<'menu' | 'settings' | null>(null);
+  const pauseRef = useRef(false);
+  const wasCountdownRef = useRef(false);
 
   // 10 fixed levels: every cleared health battle increases opponent WPM.
   const pickBotWpm = useCallback(() => LEVEL_WPM[levelRef.current - 1], []);
@@ -132,7 +140,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   };
 
   const fire = (from: 'player' | 'bot') => {
-    if (roundLocked.current) return;
+    if (roundLocked.current || pauseRef.current) return;
     const shot: LetterBullet = {
       id: ++nextBulletId.current,
       from,
@@ -201,7 +209,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     const wpm = LEVEL_WPM[levelRef.current - 1];
     const delay = 60000 / (wpm * 5);
     botTimeoutRef.current = window.setTimeout(() => {
-      if (roundLocked.current || winningShotRef.current) return;
+      if (roundLocked.current || winningShotRef.current || pauseRef.current) return;
       const word = botWord.current;
       if (botTyped.current.length >= word.length) return;
       botTyped.current = word.slice(0, botTyped.current.length + 1);
@@ -272,7 +280,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
   useEffect(() => {
     const focusOnTyping = (e: KeyboardEvent) => {
-      if (stateRef.current.phase === 'typing' && !roundLocked.current &&
+      if (stateRef.current.phase === 'typing' && !roundLocked.current && !pauseRef.current &&
           e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
         inputRef.current?.focus();
       }
@@ -282,7 +290,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (stateRef.current.phase !== 'typing' || roundLocked.current) return;
+    if (stateRef.current.phase !== 'typing' || roundLocked.current || pauseRef.current) return;
     const typed = e.target.value.toUpperCase();
     const target = playerWord.current;
     if (!target.startsWith(typed)) {
@@ -305,6 +313,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   };
 
   const handlePlayAgain = () => {
+    pauseRef.current = false;
+    setPauseMenu(null);
     soundManager.playClick();
     // A win unlocks the next level. A loss retries the current level.
     const nextLevel = stateRef.current.matchWinner === 'player' ? Math.min(10, levelRef.current + 1) : levelRef.current;
@@ -349,6 +359,55 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     // Each correct letter creates one opponent collision effect. Scoring remains first word completed.
   };
 
+  const openPause = () => {
+    if (pauseRef.current || stateRef.current.phase === 'finished' || stateRef.current.phase === 'hit') return;
+    soundManager.playClick();
+    wasCountdownRef.current = stateRef.current.phase === 'countdown';
+    pauseRef.current = true;
+    // Clearing the scheduled bot key prevents any off-screen damage while paused.
+    if (botTimeoutRef.current !== null) window.clearTimeout(botTimeoutRef.current);
+    botTimeoutRef.current = null;
+    if (countdownRef.current !== null) window.clearInterval(countdownRef.current);
+    countdownRef.current = null;
+    setPauseMenu('menu');
+    inputRef.current?.blur();
+  };
+
+  const resumeBattle = () => {
+    soundManager.playClick();
+    pauseRef.current = false;
+    setPauseMenu(null);
+    if (wasCountdownRef.current) {
+      // Restart the 3-2-1-GO countdown so it cannot skip elapsed seconds.
+      runCountdown();
+    } else if (stateRef.current.phase === 'typing' && !roundLocked.current) {
+      scheduleBotLetter();
+      window.setTimeout(() => inputRef.current?.focus(), 40);
+    }
+    wasCountdownRef.current = false;
+  };
+
+  const pauseExitHome = () => {
+    pauseRef.current = false;
+    soundManager.playClick();
+    clearTimers();
+    onNavigate('home');
+  };
+
+  useEffect(() => {
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (pauseRef.current) {
+        if (pauseMenu === 'settings') setPauseMenu('menu');
+        else resumeBattle();
+      } else openPause();
+    };
+    window.addEventListener('keydown', onEscape);
+    return () => window.removeEventListener('keydown', onEscape);
+  }, [pauseMenu]);
+
   const handleExitMatch = () => {
     soundManager.playClick();
     clearTimers();
@@ -375,7 +434,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     <div
       className={`screen-wrapper ${state.shakeActive ? 'screen-shake' : ''}`}
       onClick={() => {
-        if (state.phase === 'typing') inputRef.current?.focus();
+        if (!pauseRef.current && state.phase === 'typing') inputRef.current?.focus();
       }}
     >
       {/* TOP HUD BAR */}
@@ -397,6 +456,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
             <div className="hud-kills-text">HP: <strong style={{ color: '#ffffff' }}>{state.playerHp} / 100</strong></div><div className="health-bar-track"><div className="health-bar-fill" style={{width: `${state.playerHp}%`}} /></div>
           </div>
         </div>
+
+        <button type="button" className="battle-pause-toggle" aria-label="Pause game" onClick={(event) => {event.stopPropagation(); openPause();}}><Pause size={17} fill="currentColor"/><span>PAUSE</span></button>
 
         {/* TOP CENTER LOGO & ROUND BADGE */}
         <div className="battle-center-top">
@@ -460,7 +521,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
             id="type-input-field"
             value={state.playerInput}
             onChange={handleInputChange}
-            disabled={state.phase !== 'typing'}
+            disabled={state.phase !== 'typing' || pauseMenu !== null}
             placeholder="Type here..."
             autoComplete="off"
             autoCorrect="off"
@@ -485,6 +546,29 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       <div className="bottom-kill-target">
         EACH CORRECT LETTER = 1 HP DAMAGE
       </div>
+
+      {pauseMenu && (
+        <div className="battle-pause-backdrop" onMouseDown={event => event.stopPropagation()}>
+          <div className="battle-pause-panel" role="dialog" aria-modal="true" aria-label="Pause menu">
+            <div className="battle-pause-title">{pauseMenu === 'settings' ? 'AUDIO SETTINGS' : 'GAME PAUSED'}</div>
+            {pauseMenu === 'settings' ? (
+              <div className="battle-volume-settings">
+                <label htmlFor="battle-music-volume">Music <strong>{audioSettings.musicVolume}%</strong></label>
+                <input id="battle-music-volume" type="range" min="0" max="100" value={audioSettings.musicVolume} onChange={e => onUpdateAudioSettings({...audioSettings, musicVolume: Number(e.target.value), musicEnabled: Number(e.target.value) > 0})} />
+                <label htmlFor="battle-sfx-volume">Sound Effects <strong>{audioSettings.sfxVolume}%</strong></label>
+                <input id="battle-sfx-volume" type="range" min="0" max="100" value={audioSettings.sfxVolume} onChange={e => onUpdateAudioSettings({...audioSettings, sfxVolume: Number(e.target.value), sfxEnabled: Number(e.target.value) > 0})} />
+                <button className="battle-pause-action" type="button" onClick={() => {soundManager.playClick(); setPauseMenu('menu');}}><ArrowLeft size={18}/> BACK</button>
+              </div>
+            ) : (
+              <div className="battle-pause-actions">
+                <button className="battle-pause-action primary" type="button" onClick={resumeBattle}><Play size={18} fill="currentColor"/> RESUME</button>
+                <button className="battle-pause-action" type="button" onClick={() => {soundManager.playClick(); setPauseMenu('settings');}}><Settings size={18}/> SETTINGS</button>
+                <button className="battle-pause-action exit" type="button" onClick={pauseExitHome}><LogOut size={18}/> EXIT TO HOME</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* VICTORY POPUP MODAL */}
       {state.phase === 'finished' && state.matchWinner === 'player' && (

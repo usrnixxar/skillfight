@@ -414,6 +414,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
               <span className="hud-player-tag">{diffConfig.name} BOT</span>
             </div>
             <div className="hud-kills-text">HP: <strong style={{ color: '#ffffff' }}>{state.botHp} / 100</strong></div><div className="health-bar-track"><div className="health-bar-fill" style={{width: `${state.botHp}%`}} /></div>
+            <div className="bot-hud-word"><span>BOT WORD #{botIndex.current + 1}</span><strong>{botWord.current}</strong></div>
           </div>
           <div className="hud-avatar-box">
             <img
@@ -429,7 +430,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       <div className="center-word-card dual-word-card">
         <div className="word-card-label">YOUR WORD · #{playerIndex.current + 1}</div>
         <div className="word-card-target">{state.currentWord}</div>
-        <div className="bot-word-target"><span>BOT WORD · #{botIndex.current + 1}</span><strong>{botWord.current}</strong></div>
+        
       </div>
 
       {/* Both gunfighters fire independently on every correct letter. */}

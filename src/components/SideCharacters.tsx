@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 export type CharacterActionState = 'idle' | 'ready' | 'aim' | 'fire' | 'hit' | 'recover' | 'victory' | 'defeat' | 'typing-low' | 'typing-mid' | 'typing-high' | 'attack';
-
 interface Props {
   isBattle?: boolean;
   leftState?: CharacterActionState;
@@ -15,76 +14,83 @@ const female = ['frame_01_idle.png','frame_02_raise_1.png','frame_03_raise_2.png
 
 function Fighter({ side, state, shots }: { side: 'male2' | 'female2'; state: CharacterActionState; shots: number }) {
   const frames = side === 'male2' ? male : female;
-  const aimFrame = side === 'male2' ? 7 : 5;
-  const fireFrame = side === 'male2' ? 8 : 6;
+  const aim = side === 'male2' ? 7 : 5;
+  const firing = side === 'male2' ? 8 : 6;
   const [frame, setFrame] = useState(0);
-  const [loaded, setLoaded] = useState(false);
   const lastShots = useRef(shots);
-  const pending = useRef(0);
-  const raised = useRef(false);
-  const playing = useRef(false);
-  const active = useRef(true);
-  const timers = useRef<number[]>([]);
-  const clear = () => {
-    timers.current.forEach(window.clearTimeout);
-    timers.current = [];
-  };
-  const after = (ms: number, fn: () => void) => {
-    timers.current.push(window.setTimeout(() => { if (active.current) fn(); }, ms));
-  };
-  // Decode all poses once: an unloaded image must never replace an active sprite.
+  const queued = useRef(0);
+  const raisingAt = useRef<number | null>(null);
+  const firingAt = useRef<number | null>(null);
+  const currentFrame = useRef(0);
+  const latestState = useRef(state);
+  latestState.current = state;
+
+  // Start loading all poses early, without pausing gameplay for image decoding.
   useEffect(() => {
-    let cancelled = false;
-    active.current = true;
-    setLoaded(false);
-    Promise.all(frames.map(name => new Promise<void>(resolve => {
+    const images = frames.map(name => {
       const img = new Image();
-      img.onload = () => { if (img.decode) void img.decode().catch(() => {}).then(() => resolve()); else resolve(); };
-      img.onerror = () => resolve();
       img.src = `/assets/characters/${side}/${name}`;
-    }))).then(() => { if (!cancelled) setLoaded(true); });
-    return () => { cancelled = true; active.current = false; clear(); };
+      return img;
+    });
+    return () => { images.forEach(img => { img.onload = null; img.onerror = null; }); };
   }, [side]);
 
-  const fireNext = () => {
-    if (!active.current || !raised.current || playing.current || pending.current <= 0) return;
-    pending.current--;
-    playing.current = true;
-    setFrame(fireFrame);
-    after(60, () => setFrame(fireFrame + 1));
-    after(120, () => {
-      setFrame(aimFrame);
-      playing.current = false;
-      fireNext();
-    });
-  };
   useEffect(() => {
-    if (state === 'idle' || state === 'ready' || state === 'victory' || state === 'defeat') {
-      clear();
-      raised.current = false;
-      playing.current = false;
-      pending.current = 0;
-      lastShots.current = shots;
-      setFrame(0);
-    }
-  }, [state === 'idle' || state === 'ready' || state === 'victory' || state === 'defeat']);
-
-  useEffect(() => {
-    const delta = Math.max(0, shots - lastShots.current);
+    const delta = shots - lastShots.current;
     lastShots.current = shots;
-    pending.current += delta;
-    if (!loaded || pending.current === 0) return;
-    if (!raised.current) {
-      // Lock the first raise sequence; new letters append to the firing queue.
-      raised.current = true;
-      playing.current = true;
-      [1, 2, 3, 4, aimFrame].forEach((idx, n) => after(n * 48, () => setFrame(idx)));
-      after(240, () => {
-        playing.current = false;
-        fireNext();
-      });
-    } else fireNext();
-  }, [shots, loaded]);
+    if (delta > 0) {
+      queued.current = Math.min(queued.current + delta, 30);
+      if (raisingAt.current === null) raisingAt.current = performance.now();
+    } else if (delta < 0) {
+      queued.current = 0;
+      raisingAt.current = null;
+      firingAt.current = null;
+    }
+  }, [shots]);
+
+  // One clock drives all transitions, so delayed timers cannot interrupt or freeze poses.
+  useEffect(() => {
+    let raf = 0;
+    let active = true;
+    const tick = (now: number) => {
+      if (!active) return;
+      const status = latestState.current;
+      let target = 0;
+      if (status === 'ready' || status === 'defeat' || status === 'victory') {
+        queued.current = 0;
+        raisingAt.current = null;
+        firingAt.current = null;
+      } else if (raisingAt.current !== null) {
+        const raisingElapsed = now - raisingAt.current;
+        if (raisingElapsed < 250) {
+          target = [1, 2, 3, 4, aim][Math.min(4, Math.floor(raisingElapsed / 50))];
+        } else {
+          if (firingAt.current === null && queued.current > 0) {
+            queued.current--;
+            firingAt.current = now;
+          }
+          if (firingAt.current !== null) {
+            const elapsed = now - firingAt.current;
+            if (elapsed < 55) target = firing;
+            else if (elapsed < 110) target = firing + 1;
+            else {
+              firingAt.current = null;
+              target = aim;
+            }
+          } else {
+            target = aim;
+          }
+        }
+      }
+      if (target !== currentFrame.current) {
+        currentFrame.current = target;
+        setFrame(target);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { active = false; cancelAnimationFrame(raf); };
+  }, [side]);
 
   return <img src={`/assets/characters/${side}/${frames[frame]}`} alt={side === 'male2' ? 'Blue gunfighter' : 'Pink gunfighter'} className="fighter-image" draggable={false} />;
 }

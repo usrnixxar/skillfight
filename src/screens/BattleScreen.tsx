@@ -396,7 +396,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       </div>
 
       {/* Both gunfighters fire independently on every correct letter. */}
-      <SideCharacters isBattle leftState={leftPose} rightState={rightPose} playerShots={shotCounts.player} botShots={shotCounts.bot} />
+      <SideCharacters isBattle leftState={leftPose} rightState={rightPose} playerShots={shotCounts.player} botShots={shotCounts.bot} round={state.round} />
       <BattleFxCanvas bullets={bullets} onImpact={handleBulletImpact} />
       {roundBanner && <div className={`round-impact-banner ${roundBanner === 'player' ? 'round-blue' : 'round-pink'}`} key={`${state.round}-${roundBanner}`}>{roundBanner === 'player' ? 'DIRECT HIT!' : 'OPPONENT HIT!'}</div>}
       {impactCount > 0 && <div className={`impact-counter ${impactSide === 'bot' ? 'impact-right' : 'impact-left'}`} aria-live="off" key={impactCount}>✦</div>}

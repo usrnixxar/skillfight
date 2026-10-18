@@ -101,7 +101,7 @@ function Fighter({ side, state, shots, round }: { side: 'male2' | 'female2'; sta
     return () => { active = false; cancelAnimationFrame(raf); };
   }, [side]);
 
-  return <img src={`/assets/characters/${side}/${frames[frame]}`} alt={side === 'male2' ? 'Blue gunfighter' : 'Pink gunfighter'} className="fighter-image" draggable={false} />;
+  return <img id={`fighter-sprite-${side}`} src={`/assets/characters/${side}/${frames[frame]}`} alt={side === 'male2' ? 'Blue gunfighter' : 'Pink gunfighter'} className="fighter-image" draggable={false} />;
 }
 
 export const SideCharacters: React.FC<Props> = ({ isBattle = false, leftState = 'idle', rightState = 'idle', playerShots = 0, botShots = 0, round = 1 }) => (

@@ -7,12 +7,13 @@ interface Props {
   rightState?: CharacterActionState;
   playerShots?: number;
   botShots?: number;
+  round?: number;
 }
 
 const male = ['frame_01_idle.png','frame_02_raise_1.png','frame_03_raise_2.png','frame_04_raise_3.png','frame_05_aim_1.png','frame_06_aim_2.png','frame_07_aim_3.png','frame_08_aim_4.png','frame_09_fire_1.png','frame_10_fire_2.png'];
 const female = ['frame_01_idle.png','frame_02_raise_1.png','frame_03_raise_2.png','frame_04_raise_3.png','frame_05_aim_1.png','frame_06_aim_2.png','frame_07_fire_1.png','frame_08_fire_2.png','frame_09_recover_1.png','frame_10_recover_2.png'];
 
-function Fighter({ side, state, shots }: { side: 'male2' | 'female2'; state: CharacterActionState; shots: number }) {
+function Fighter({ side, state, shots, round }: { side: 'male2' | 'female2'; state: CharacterActionState; shots: number; round: number }) {
   const frames = side === 'male2' ? male : female;
   const aim = side === 'male2' ? 7 : 5;
   const firing = side === 'male2' ? 8 : 6;
@@ -24,6 +25,14 @@ function Fighter({ side, state, shots }: { side: 'male2' | 'female2'; state: Cha
   const currentFrame = useRef(0);
   const latestState = useRef(state);
   latestState.current = state;
+
+  useEffect(() => {
+    queued.current = 0;
+    raisingAt.current = null;
+    firingAt.current = null;
+    currentFrame.current = 0;
+    setFrame(0);
+  }, [round]);
 
   // Start loading all poses early, without pausing gameplay for image decoding.
   useEffect(() => {
@@ -95,13 +104,13 @@ function Fighter({ side, state, shots }: { side: 'male2' | 'female2'; state: Cha
   return <img src={`/assets/characters/${side}/${frames[frame]}`} alt={side === 'male2' ? 'Blue gunfighter' : 'Pink gunfighter'} className="fighter-image" draggable={false} />;
 }
 
-export const SideCharacters: React.FC<Props> = ({ isBattle = false, leftState = 'idle', rightState = 'idle', playerShots = 0, botShots = 0 }) => (
+export const SideCharacters: React.FC<Props> = ({ isBattle = false, leftState = 'idle', rightState = 'idle', playerShots = 0, botShots = 0, round = 1 }) => (
   <>
     <div className={`side-fighter-left ${leftState === 'hit' ? 'fighter-hit-recoil-left' : ''} ${isBattle ? 'battle-mode' : ''}`}>
-      <Fighter side="male2" state={leftState} shots={playerShots} />
+      <Fighter side="male2" state={leftState} shots={playerShots} round={round} />
     </div>
     <div className={`side-fighter-right ${rightState === 'hit' ? 'fighter-hit-recoil-right' : ''} ${isBattle ? 'battle-mode' : ''}`}>
-      <Fighter side="female2" state={rightState} shots={botShots} />
+      <Fighter side="female2" state={rightState} shots={botShots} round={round} />
     </div>
   </>
 );

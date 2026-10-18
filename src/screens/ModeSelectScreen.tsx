@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { Swords, Users, GraduationCap, ArrowLeft } from 'lucide-react';
 import { TopLogo } from '../components/TopLogo';
-import { SideCharacters } from '../components/SideCharacters';
 import { soundManager } from '../audio/soundManager';
 import { BotDifficulty, GameScreen } from '../types/game';
 import { framePreloader } from '../game/framePreloader';
@@ -42,7 +41,7 @@ export const ModeSelectScreen: React.FC<ModeSelectScreenProps> = ({
     <div className="screen-wrapper">
       <TopLogo />
 
-      <SideCharacters leftState="idle" rightState="idle" />
+      {/* Background video contains both animated fighters. */}
 
       <div className="mode-select-container">
         {/* CARD 1: NORMAL PLAY */}

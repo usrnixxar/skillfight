@@ -249,15 +249,15 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         break;
 
       case 'RECOVERY_START':
-        // Opponent recovers from hit
-        setRightPose('recover');
-        soundManager.playRoundWin();
+        // Recovery must follow the registered projectile impact/hit, never precede it.
+        if (hasAwardedKillRef.current && stateRef.current.roundWinner === 'player') {
+          setRightPose('recover');
+          soundManager.playRoundWin();
+        }
         break;
 
-      case 'ATTACK_COMPLETE':
-        // Animation finished at frame 240
-        handleMaleAttackComplete();
-        break;
+      // ATTACK_COMPLETE is handled only by MaleFighterFramePlayer.onComplete.
+      // Dispatching it as a frame event too would advance the round twice.
 
       default:
         break;

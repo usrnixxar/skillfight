@@ -123,6 +123,7 @@ export const SideCharacters: React.FC<SideCharactersProps> = ({
           src={getRightSprite()}
           alt="Pink Fighter (Player 2 / Bot)"
           className="fighter-image"
+          style={{ transform: 'scaleX(-1)' }}
           draggable={false}
         />
         {/* Magic Aura when typing with high intensity */}

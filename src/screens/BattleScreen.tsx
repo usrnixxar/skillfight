@@ -73,6 +73,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const [bullets, setBullets] = useState<LetterBullet[]>([]);
   const [shotCounts, setShotCounts] = useState({ player: 0, bot: 0 });
   const [impactCount, setImpactCount] = useState(0);
+  const [impactSide, setImpactSide] = useState<'player' | 'bot' | null>(null);
   const [roundBanner, setRoundBanner] = useState<'player' | 'bot' | null>(null);
   const nextBulletId = useRef(0);
   const botTimeoutRef = useRef<number | null>(null);
@@ -278,6 +279,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     setBullets([]);
     setRoundBanner(null);
     setImpactCount(0);
+    setImpactSide(null);
     setShotCounts({ player: 0, bot: 0 });
     setInputError(false);
     lastPlayerInput.current = '';
@@ -298,7 +300,9 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
   const handleBulletImpact = (_shot: LetterBullet) => {
     setImpactCount(n => n + 1);
-    // Impact is a visual feedback event per letter; the first word finisher wins the round.
+    setImpactSide(_shot.from === 'player' ? 'bot' : 'player');
+    soundManager.playImpact(_shot.from === 'player');
+    // Each correct letter creates one opponent collision effect. Scoring remains first word completed.
   };
 
   const handleExitMatch = () => {
@@ -395,7 +399,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       <SideCharacters isBattle leftState={leftPose} rightState={rightPose} playerShots={shotCounts.player} botShots={shotCounts.bot} />
       <BattleFxCanvas bullets={bullets} onImpact={handleBulletImpact} />
       {roundBanner && <div className={`round-impact-banner ${roundBanner === 'player' ? 'round-blue' : 'round-pink'}`} key={`${state.round}-${roundBanner}`}>{roundBanner === 'player' ? 'DIRECT HIT!' : 'OPPONENT HIT!'}</div>}
-      <div className="impact-counter" aria-live="off" key={impactCount}>{impactCount > 0 ? '✦' : ''}</div>
+      {impactCount > 0 && <div className={`impact-counter ${impactSide === 'bot' ? 'impact-right' : 'impact-left'}`} aria-live="off" key={impactCount}>✦</div>}
 
       {/* 3-SECOND PRE-MATCH COUNTDOWN OVERLAY */}
       {state.phase === 'countdown' && (

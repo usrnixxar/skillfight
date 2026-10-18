@@ -1250,3 +1250,20 @@ body.reduced-motion * {
   pointer-events: none;
   z-index: 999;
 }
+
+
+/* Gunfighter aim and recoil: GPU-transformed sprite, smooth at display refresh rate. */
+.side-fighter-left.gunfire-player {
+  animation: gunShotRight 110ms ease-out both;
+}
+.side-fighter-right.gunfire-bot {
+  animation: gunShotLeft 110ms ease-out both;
+}
+@keyframes gunShotRight {
+  0%, 100% { transform: translateX(0); }
+  45% { transform: translateX(-7px); }
+}
+@keyframes gunShotLeft {
+  0%, 100% { transform: translateX(0); }
+  45% { transform: translateX(7px); }
+}

@@ -64,6 +64,20 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  // Shared deterministic word stream; each fighter advances independently.
+  const wordsRef = useRef<string[]>([state.currentWord]);
+  const playerIndex = useRef(0);
+  const botIndex = useRef(0);
+  const playerTyped = useRef('');
+  const botTyped = useRef('');
+  const playerWord = useRef(state.currentWord);
+  const botWord = useRef(state.currentWord);
+  const getWordAt = (index: number) => {
+    while (wordsRef.current.length <= index) {
+      wordsRef.current.push(getRandomWord(difficulty, wordsRef.current[wordsRef.current.length - 1]));
+    }
+    return wordsRef.current[index];
+  };
   const [inputError, setInputError] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -164,46 +178,53 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     }, 720);
   };
 
-  // Word finishes do not end the fight. Both fighters get the next word.
-  const nextWordRound = () => {
-    if (roundLocked.current || winningShotRef.current) return;
-    roundLocked.current = true;
-    if (botTimeoutRef.current !== null) clearTimeout(botTimeoutRef.current);
-    const nextWord = getRandomWord(difficulty, stateRef.current.currentWord);
-    const nextWpm = pickBotWpm();
+  // Player and bot receive the same sequence, but only the finisher advances.
+  // Neither fighter can overwrite or interrupt the other's unfinished word.
+  const advancePlayer = () => {
+    playerIndex.current++;
+    const next = getWordAt(playerIndex.current);
+    playerWord.current = next;
+    playerTyped.current = '';
     lastPlayerInput.current = '';
-    setLeftPose('idle');
-    setRightPose('idle');
     setInputError(false);
     setState(prev => ({
-      ...prev, round: prev.round + 1, currentWord: nextWord,
-      botWpm: nextWpm, playerInput: '', botInput: '',
-      botProgress: 0, phase: 'typing', roundWinner: null
+      ...prev,
+      round: Math.max(playerIndex.current, botIndex.current) + 1,
+      currentWord: next,
+      playerInput: ''
     }));
-    later(() => {
-      if (winningShotRef.current) return;
-      roundLocked.current = false;
-      inputRef.current?.focus();
-      startBotTyping(nextWord, nextWpm);
-    }, 320);
+    // Preserve the currently focused input; no unmount/disabled transition.
   };
 
-  const startBotTyping = (word: string, wpm: number) => {
+  const scheduleBotLetter = () => {
     if (botTimeoutRef.current !== null) clearTimeout(botTimeoutRef.current);
+    const wpm = LEVEL_WPM[levelRef.current - 1];
     const delay = 60000 / (wpm * 5);
-    let count = 0;
-    const tick = () => {
-      if (roundLocked.current) return;
-      count++;
-      setState(prev => ({ ...prev, botInput: word.slice(0, count), botProgress: count }));
+    botTimeoutRef.current = window.setTimeout(() => {
+      if (roundLocked.current || winningShotRef.current) return;
+      const word = botWord.current;
+      if (botTyped.current.length >= word.length) return;
+      botTyped.current = word.slice(0, botTyped.current.length + 1);
+      setState(prev => ({ ...prev, botInput: botTyped.current, botProgress: botTyped.current.length }));
       fire('bot');
-      if (count >= word.length) {
-        if (healthRef.current.player > 0) nextWordRound();
-        return;
+      if (roundLocked.current) return;
+      if (botTyped.current.length === word.length) {
+        botIndex.current++;
+        botWord.current = getWordAt(botIndex.current);
+        botTyped.current = '';
+        setState(prev => ({
+          ...prev,
+          botInput: '',
+          botProgress: 0,
+          round: Math.max(playerIndex.current, botIndex.current) + 1
+        }));
       }
-      botTimeoutRef.current = window.setTimeout(tick, delay * (0.85 + Math.random() * 0.3));
-    };
-    botTimeoutRef.current = window.setTimeout(tick, 180 + Math.random() * 100);
+      scheduleBotLetter();
+    }, delay * (0.85 + Math.random() * 0.3));
+  };
+
+  const startBotTyping = (_word: string, _wpm: number) => {
+    scheduleBotLetter();
   };
 
   const runCountdown = () => {
@@ -211,6 +232,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     roundLocked.current = true;
     winningShotRef.current = null;
     lastPlayerInput.current = '';
+    playerTyped.current = '';
+    botTyped.current = '';
     setLeftPose('ready');
     setRightPose('ready');
     let n = 3;
@@ -261,20 +284,23 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (stateRef.current.phase !== 'typing' || roundLocked.current) return;
     const typed = e.target.value.toUpperCase();
-    const target = stateRef.current.currentWord;
-    // Deletions and incorrect characters cannot fire a bullet.
+    const target = playerWord.current;
     if (!target.startsWith(typed)) {
       setInputError(true);
       soundManager.playTypeError();
       return;
     }
-    const previous = lastPlayerInput.current;
+    const oldLength = playerTyped.current.length;
+    playerTyped.current = typed;
     lastPlayerInput.current = typed;
     setInputError(false);
     setState(prev => ({ ...prev, playerInput: typed }));
-    if (typed.length > previous.length) {
-      for (let i = previous.length; i < typed.length; i++) fire('player');
-      if (typed === target && healthRef.current.bot > 0) nextWordRound();
+    if (typed.length > oldLength) {
+      for (let i = oldLength; i < typed.length; i++) {
+        if (roundLocked.current) break;
+        fire('player');
+      }
+      if (!roundLocked.current && typed === target) advancePlayer();
     }
   };
 
@@ -297,6 +323,13 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     winningShotRef.current = null;
     roundLocked.current = true;
     const word = getRandomWord(difficulty);
+    wordsRef.current = [word];
+    playerIndex.current = 0;
+    botIndex.current = 0;
+    playerWord.current = word;
+    botWord.current = word;
+    playerTyped.current = '';
+    botTyped.current = '';
     setState({
       round: 1, playerKills: 0, botKills: 0, playerHp: 100, botHp: 100, currentWord: word,
       playerInput: '', botInput: '', botWpm: LEVEL_WPM[nextLevel - 1],
@@ -393,9 +426,10 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       </div>
 
       {/* CENTER WORD CARD */}
-      <div className="center-word-card">
-        <div className="word-card-label">TYPE THIS WORD:</div>
+      <div className="center-word-card dual-word-card">
+        <div className="word-card-label">YOUR WORD · #{playerIndex.current + 1}</div>
         <div className="word-card-target">{state.currentWord}</div>
+        <div className="bot-word-target"><span>BOT WORD · #{botIndex.current + 1}</span><strong>{botWord.current}</strong></div>
       </div>
 
       {/* Both gunfighters fire independently on every correct letter. */}

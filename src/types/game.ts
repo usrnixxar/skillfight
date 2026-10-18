@@ -69,6 +69,8 @@ export type BattlePhase =
 export interface BattleState {
   round: number;
   playerKills: number;
+  playerHp: number;
+  botHp: number;
   botKills: number;
   currentWord: string;
   playerInput: string;

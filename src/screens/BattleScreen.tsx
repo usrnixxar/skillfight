@@ -311,6 +311,21 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     onNavigate('modes');
   };
 
+  // Spacebar restarts only after the result popup appears.
+  // Keep the handler current without attaching a new listener on each render.
+  const playAgainRef = useRef(handlePlayAgain);
+  playAgainRef.current = handlePlayAgain;
+  useEffect(() => {
+    const onSpacePlayAgain = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || event.repeat || stateRef.current.phase !== 'finished') return;
+      event.preventDefault();
+      event.stopPropagation();
+      playAgainRef.current();
+    };
+    window.addEventListener('keydown', onSpacePlayAgain);
+    return () => window.removeEventListener('keydown', onSpacePlayAgain);
+  }, []);
+
   // 3 Hearts for each side:
   // Player has 3 hearts, loses 1 each time bot gets a kill (heartsLeft = 3 - botKills)
   // Bot has 3 hearts, loses 1 each time player gets a kill (heartsLeft = 3 - playerKills)

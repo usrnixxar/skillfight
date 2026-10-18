@@ -374,6 +374,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   };
 
   const resumeBattle = () => {
+    if (document.hidden || !document.hasFocus()) return;
     soundManager.playClick();
     pauseRef.current = false;
     setPauseMenu(null);
@@ -393,6 +394,24 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     clearTimers();
     onNavigate('home');
   };
+
+  // Switching browser tabs, minimizing the window or losing window focus
+  // automatically pauses an active battle. Returning never auto-resumes.
+  useEffect(() => {
+    const pauseWhenHidden = () => {
+      if (document.hidden || !document.hasFocus()) {
+        if (!pauseRef.current && (stateRef.current.phase === 'typing' || stateRef.current.phase === 'countdown')) {
+          openPause();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', pauseWhenHidden);
+    window.addEventListener('blur', pauseWhenHidden);
+    return () => {
+      document.removeEventListener('visibilitychange', pauseWhenHidden);
+      window.removeEventListener('blur', pauseWhenHidden);
+    };
+  }, []);
 
   useEffect(() => {
     const onEscape = (event: KeyboardEvent) => {

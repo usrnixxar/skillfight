@@ -71,6 +71,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
   // Independent shots are driven by each correctly entered letter.
   const [bullets, setBullets] = useState<LetterBullet[]>([]);
+  const [shotCounts, setShotCounts] = useState({ player: 0, bot: 0 });
   const nextBulletId = useRef(0);
   const botTimeoutRef = useRef<number | null>(null);
   const countdownRef = useRef<number | null>(null);
@@ -118,6 +119,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       createdAt: performance.now()
     };
     setBullets(prev => [...prev, shot]);
+    setShotCounts(prev => ({ ...prev, [from]: prev[from] + 1 }));
     soundManager.playGunFireSound();
     pose(from, 'fire', 105);
     // Keep a shot visible through impact; only visual impact occurs here.
@@ -268,6 +270,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     soundManager.playClick();
     clearTimers();
     setBullets([]);
+    setShotCounts({ player: 0, bot: 0 });
     setInputError(false);
     lastPlayerInput.current = '';
     winningShotRef.current = null;
@@ -376,7 +379,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       </div>
 
       {/* Both gunfighters fire independently on every correct letter. */}
-      <SideCharacters isBattle leftState={leftPose} rightState={rightPose} playerShots={bullets.filter(b => b.from === 'player').reduce((m,b) => Math.max(m,b.id), 0)} botShots={bullets.filter(b => b.from === 'bot').reduce((m,b) => Math.max(m,b.id), 0)} />
+      <SideCharacters isBattle leftState={leftPose} rightState={rightPose} playerShots={shotCounts.player} botShots={shotCounts.bot} />
       <BattleFxCanvas bullets={bullets} />
 
       {/* 3-SECOND PRE-MATCH COUNTDOWN OVERLAY */}

@@ -3,21 +3,23 @@ import { MALE_ATTACK_CONFIG, getMaleAttackFramePath } from './maleFighterConfig'
 class FramePreloader {
   private images: Map<number, HTMLImageElement> = new Map();
   private isLoaded = false;
-  private isLoading = false;
+  private loadingPromise: Promise<void> | null = null;
   private loadProgress = 0;
 
-  public async preloadAll(): Promise<void> {
-    if (this.isLoaded) return;
-    if (this.isLoading) return;
+  public preloadAll(): Promise<void> {
+    if (this.isLoaded) return Promise.resolve();
+    if (this.loadingPromise) return this.loadingPromise;
+    this.loadingPromise = this.loadFrames();
+    return this.loadingPromise;
+  }
 
-    this.isLoading = true;
+  private async loadFrames(): Promise<void> {
     const total = MALE_ATTACK_CONFIG.totalFrames;
     let loadedCount = 0;
 
     const loadSingleFrame = (frameNum: number): Promise<void> => {
       return new Promise((resolve) => {
         const img = new Image();
-        img.src = getMaleAttackFramePath(frameNum);
         img.onload = () => {
           this.images.set(frameNum, img);
           loadedCount++;
@@ -30,6 +32,7 @@ class FramePreloader {
           this.loadProgress = Math.floor((loadedCount / total) * 100);
           resolve();
         };
+        img.src = getMaleAttackFramePath(frameNum);
       });
     };
 
@@ -44,7 +47,7 @@ class FramePreloader {
     }
 
     this.isLoaded = true;
-    this.isLoading = false;
+    this.loadingPromise = null;
     this.loadProgress = 100;
   }
 

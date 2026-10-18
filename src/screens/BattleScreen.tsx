@@ -559,7 +559,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
             id="type-input-field"
             value={state.playerInput}
             onChange={handleInputChange}
-            inputMode={mobileKeyboardGate ? 'none' : undefined}
+            inputMode={(typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) ? 'none' : undefined}
             readOnly={mobileKeyboardGate}
             disabled={state.phase !== 'typing' || pauseMenu !== null || mobileKeyboardGate}
             placeholder="Type here..."

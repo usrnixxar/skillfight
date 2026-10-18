@@ -1716,3 +1716,28 @@ body.reduced-motion * {
 @media(max-height:650px){
  .student-popup-screen .student-flow-card {max-height:calc(100% - 5px);width:min(520px,87%);}
 }
+
+
+/* Mobile combat VFX: all positions are relative to the transformed arena,
+   never to the physical device's viewport axes. */
+.screen-wrapper .battle-canvas-fx {
+  position:absolute;
+  inset:0;
+  display:block;
+  width:100%;
+  height:100%;
+  z-index:18;
+  pointer-events:none;
+  transform:none !important;
+  transform-origin:top left;
+}
+@media (pointer:coarse) {
+  .screen-wrapper .side-fighter-left,
+  .screen-wrapper .side-fighter-right {overflow:visible;transform:none;}
+  .screen-wrapper .side-fighter-left {left:2.5%;width:26%;}
+  .screen-wrapper .side-fighter-right {right:2.5%;width:26%;}
+  .screen-wrapper .fighter-image {object-fit:contain;object-position:center bottom;}
+  .screen-wrapper .round-impact-banner {left:50%;top:47%;}
+  .screen-wrapper .impact-counter.impact-left {left:21%;top:51%;}
+  .screen-wrapper .impact-counter.impact-right {left:79%;top:51%;}
+}

@@ -114,7 +114,7 @@ export const StudentScreen: React.FC<StudentScreenProps> = ({ onNavigate, onPlay
   return (
     <div className="screen-wrapper student-popup-screen">
       <div className="student-popup-overlay">
-        <section className="student-flow-card">
+        <section key={view} className="student-flow-card student-page-transition">
           <div className="student-flow-header"><GraduationCap size={23}/> SKILLENCE ACADEMY <span>STUDENT</span></div>
           {view === 'landing' && <>
             <h2>STUDENT SECTION</h2><p>Choose how you want to enter the academy game.</p>

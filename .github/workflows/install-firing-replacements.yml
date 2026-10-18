@@ -1,0 +1,27 @@
+name: Install replacement firing PNG sprites
+on:
+  push:
+    paths:
+      - '.github/workflows/install-firing-replacements.yml'
+permissions:
+  contents: write
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install freshly uploaded replacement frames
+        run: |
+          set -eu
+          for name in male2/*.png female2/*.png; do
+            test -s "$name"
+            file "$name"
+            cp "$name" "public/assets/characters/$name"
+          done
+          git add public/assets/characters/male2 public/assets/characters/female2
+          git rm -r -- male2 female2
+          git rm -- .github/workflows/install-firing-replacements.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Install new firing sprite PNGs in active character folders"
+          git push

@@ -22,7 +22,7 @@ jobs:
           with ZipFile(archive) as z:
               for name in ('p1_gun_idle.png','p1_gun_aim.png','p2_gun_idle.png','p2_gun_aim.png'):
                   data = z.read('public/assets/characters/' + name)
-                  if not data.startswith(b'\\x89PNG\\r\\n\\x1a\\n'):
+                  if not data[:8] == bytes([137, 80, 78, 71, 13, 10, 26, 10]):
                       raise ValueError(name + ' is not a PNG')
                   (dest / name).write_bytes(data)
           print('Installed all four gun sprites')

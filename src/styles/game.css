@@ -1431,3 +1431,23 @@ body.reduced-motion * {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+
+/* Keep the player's typing word central; bot target belongs under bot HP. */
+.bot-hud-word {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .55vw;
+  margin-top: .3vw;
+  padding: .27vw .55vw;
+  max-width: 100%;
+  border: 1px solid rgba(255,144,194,.65);
+  border-radius: 5px;
+  background: rgba(38,9,29,.83);
+  box-shadow: 0 0 9px rgba(255,75,149,.22);
+  white-space: nowrap;
+}
+.bot-hud-word span { font-size: clamp(8px,.63vw,11px); color: #ffc4db; font-weight: 700; }
+.bot-hud-word strong { font-size: clamp(10px,.9vw,16px); color: #fff; overflow: hidden; text-overflow: ellipsis; letter-spacing: .035em; }

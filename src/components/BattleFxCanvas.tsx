@@ -91,6 +91,7 @@ export const BattleFxCanvas: React.FC<BattleFxCanvasProps> = ({ bullets, onImpac
       ctx.scale(ratio, ratio);
       const active = bulletsRef.current;
       for (const shot of active) {
+        if (now < shot.createdAt) continue;
         if (!shotPaths.current.has(shot.id)) shotPaths.current.set(shot.id, getPath(shot));
         const path = shotPaths.current.get(shot.id)!;
         const t = Math.max(0, Math.min(1, (now - shot.createdAt) / DURATION));

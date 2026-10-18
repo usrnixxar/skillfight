@@ -376,7 +376,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       </div>
 
       {/* Both gunfighters fire independently on every correct letter. */}
-      <SideCharacters isBattle leftState={leftPose} rightState={rightPose} />
+      <SideCharacters isBattle leftState={leftPose} rightState={rightPose} playerShots={bullets.filter(b => b.from === 'player').reduce((m,b) => Math.max(m,b.id), 0)} botShots={bullets.filter(b => b.from === 'bot').reduce((m,b) => Math.max(m,b.id), 0)} />
       <BattleFxCanvas bullets={bullets} />
 
       {/* 3-SECOND PRE-MATCH COUNTDOWN OVERLAY */}

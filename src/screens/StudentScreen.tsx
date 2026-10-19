@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { PvPBattleScreen } from './PvPBattleScreen';
 import { ArrowLeft, Copy, GraduationCap, Keyboard, Loader2, Lock, Plus, Users, UserRound, Globe, Swords, Check } from 'lucide-react';
 import { soundManager } from '../audio/soundManager';
 import { supabase, isSupabaseConfigured } from '../multiplayer/supabaseClient';
@@ -9,7 +10,7 @@ interface StudentScreenProps {
   playerName: string;
   onPlayBot?: () => void;
 }
-type View = 'landing' | 'login' | 'dashboard' | 'create' | 'join' | 'preview' | 'waiting' | 'online';
+type View = 'landing' | 'login' | 'dashboard' | 'create' | 'join' | 'preview' | 'waiting' | 'online' | 'battle';
 type Room = { id: string; name: string; host_name: string; guest_name: string | null; status: string };
 const randomId = () => 'SB-' + String(Math.floor(100000 + Math.random() * 900000));
 
@@ -94,7 +95,7 @@ export const StudentScreen: React.FC<StudentScreenProps> = ({ onNavigate, onPlay
       setRoom(result);
       if (result.status === 'active') {
         // Live PvP battle state must be synchronized by the game engine before navigation.
-        setMessage('Second player connected. Multiplayer battle synchronization is not enabled yet.');
+        setView('battle');
       }
     };
     void fetchStatus();
@@ -114,7 +115,7 @@ export const StudentScreen: React.FC<StudentScreenProps> = ({ onNavigate, onPlay
   return (
     <div className="screen-wrapper student-popup-screen">
       <div className="student-popup-overlay">
-        <section key={view} className="student-flow-card student-page-transition">
+        {view === "battle" && room ? <PvPBattleScreen roomId={room.id} hostName={room.host_name} guestName={room.guest_name || "Guest"} playerName={safeName} onLeave={() => { setRoom(null); changeView("dashboard"); }} /> : <section key={view} className="student-flow-card student-page-transition">
           <div className="student-flow-header"><GraduationCap size={23}/> SKILLENCE ACADEMY <span>STUDENT</span></div>
           {view === 'landing' && <>
             <h2>STUDENT SECTION</h2><p>Choose how you want to enter the academy game.</p>
@@ -168,7 +169,7 @@ export const StudentScreen: React.FC<StudentScreenProps> = ({ onNavigate, onPlay
           </>}
           {message && <p role="status" className="student-flow-error">{message}</p>}
           <button className="student-flow-back" onClick={back}><ArrowLeft size={17}/> BACK</button>
-        </section>
+        </section>}
       </div>
     </div>
   );

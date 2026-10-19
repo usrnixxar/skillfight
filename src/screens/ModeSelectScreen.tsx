@@ -95,11 +95,11 @@ export const ModeSelectScreen: React.FC<ModeSelectScreenProps> = ({
             </div>
             <div>
               <div className="mode-text-title">MULTIPLAYER</div>
-              <div className="mode-text-desc">API will be activated later</div>
+              <div className="mode-text-desc">Create or join a private 1v1 fight room</div>
             </div>
           </div>
-          <button className="btn-coming-soon" disabled>
-            COMING SOON
+          <button className="btn-enter-student" onMouseEnter={handleHover} onClick={handleStudentClick}>
+            ROOM MODE
           </button>
         </div>
 

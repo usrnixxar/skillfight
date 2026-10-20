@@ -1771,3 +1771,31 @@ body.reduced-motion * {
 @media (prefers-reduced-motion: reduce) {
   .skillfight-spinner { animation-duration: 2s; }
 }
+
+/* Phone-only typography: lighter and more compact; desktop styles untouched.
+   Portrait gameplay rotates into a landscape arena, so target coarse devices
+   independently of physical orientation. */
+@media (pointer: coarse) and (max-width: 950px) {
+  .mode-text-title { font-size: clamp(11px, 1.5vw, 16px); font-weight: 600; letter-spacing: 0; }
+  .mode-text-desc { font-size: clamp(9px, 1.05vw, 12px); font-weight: 400; }
+  .diff-btn { font-size: clamp(10px, 1.2vw, 13px); font-weight: 600; }
+  .btn-play-master { font-size: clamp(14px, 1.8vw, 20px); font-weight: 600; }
+  .btn-slate-menu { font-size: clamp(11px, 1.3vw, 15px); font-weight: 500; }
+  .popup-title { font-size: clamp(15px, 2vw, 22px); font-weight: 600; }
+  .popup-subtitle { font-size: clamp(10px, 1.2vw, 13px); font-weight: 400; }
+  .btn-popup-primary, .btn-popup-secondary { font-size: clamp(10px, 1.2vw, 13px); font-weight: 600; }
+  .student-flow-header { font-size: clamp(12px, 1.5vw, 16px); font-weight: 600; letter-spacing: 0; }
+  .student-flow-card h2 { font-size: clamp(14px, 1.8vw, 19px); font-weight: 600; }
+  .student-flow-card p { font-size: clamp(11px, 1.1vw, 13px); font-weight: 400; }
+  .student-flow-button { font-size: clamp(11px, 1.2vw, 13px); font-weight: 600; letter-spacing: 0; }
+  .student-flow-form label { font-size: 11px; font-weight: 500; letter-spacing: 0; }
+  .student-flow-form input { font-size: 14px; font-weight: 400; }
+  .student-waiting-banner { font-size: 12px; font-weight: 600; letter-spacing: 0; }
+  .student-flow-back { font-weight: 500; }
+  .hud-player-tag, .hud-kills-text, .bottom-kill-target { font-weight: 600; }
+  .bot-hud-word strong { font-weight: 600; }
+  .dual-word-card .word-card-target { font-size: clamp(18px, 3vw, 30px); font-weight: 600; }
+  .mobile-keyboard-panel h2 { font-size: clamp(13px, 1.7vw, 18px); font-weight: 600; }
+  .mobile-keyboard-shortcut { font-weight: 600; }
+  .skillfight-transition { font-size: 13px; font-weight: 600; }
+}

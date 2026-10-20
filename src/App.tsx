@@ -6,6 +6,7 @@ import { QuitScreen } from './screens/QuitScreen';
 import { StudentScreen } from './screens/StudentScreen';
 import { BattleScreen } from './screens/BattleScreen';
 import { soundManager } from './audio/soundManager';
+import { framePreloader } from './game/framePreloader';
 import { BotDifficulty, GameScreen, GameSettings } from './types/game';
 
 const DEFAULT_SETTINGS: GameSettings = {
@@ -22,6 +23,32 @@ const DEFAULT_SETTINGS: GameSettings = {
 export const App: React.FC = () => {
   const [screen, setScreen] = useState<GameScreen>('home');
   const [difficulty, setDifficulty] = useState<BotDifficulty>('easy');
+  const [loading, setLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('Loading...');
+  const transitionId = React.useRef(0);
+
+  const navigate = (next: GameScreen) => {
+    if (next === screen) return;
+    const id = ++transitionId.current;
+    setLoadingText(next === 'battle' ? 'PREPARING ARENA...' : 'LOADING ' + next.toUpperCase() + '...');
+    setLoading(true);
+    const path = next === 'battle' ? '/assets/backgrounds/level-surface.png' : '/assets/backgrounds/home_bg.jpg';
+    const image = new Image();
+    const complete = () => {
+      if (id !== transitionId.current) return;
+      setScreen(next);
+      setLoading(false);
+    };
+    image.onload = complete;
+    image.onerror = complete;
+    image.src = path;
+    if (image.complete) complete();
+  };
+
+  useEffect(() => {
+    void framePreloader.preloadAll();
+    return () => { transitionId.current++; };
+  }, []);
 
   // Load persisted settings
   const [settings, setSettings] = useState<GameSettings>(() => {
@@ -53,7 +80,7 @@ export const App: React.FC = () => {
 
   const handleStartBattle = (diff: BotDifficulty) => {
     setDifficulty(diff);
-    setScreen('battle');
+    navigate('battle');
   };
 
   // Keyboard navigation: Escape key goes back
@@ -65,7 +92,7 @@ export const App: React.FC = () => {
           return;
         } else if (screen === 'modes' || screen === 'settings' || screen === 'quit' || screen === 'student') {
           soundManager.playClick();
-          setScreen('home');
+          navigate('home');
         }
       }
     };
@@ -93,11 +120,12 @@ export const App: React.FC = () => {
       className="game-viewport"
       style={{ backgroundImage: getBackgroundImage() }}
     >
+      {loading && <div className="skillfight-transition" role="status" aria-live="polite"><div className="skillfight-spinner" /><strong>{loadingText}</strong></div>}
       {(screen === 'home' || screen === 'modes') && (
         <video className="menu-loop-video" src="/assets/video/menu-loop.mp4" autoPlay muted loop playsInline preload="auto" aria-hidden="true" />
       )}
       {screen === 'home' && (
-        <HomeScreen onNavigate={setScreen} />
+        <HomeScreen onNavigate={navigate} />
       )}
 
       {screen === 'modes' && (
